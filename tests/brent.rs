@@ -4,7 +4,7 @@ use argmin::{
 };
 use argmin_observer_slog::SlogLogger;
 use confi::{Confidence, ConfidenceLevel};
-use probabalistic_bisector::{Bisectable, ProbabalisticBisector};
+use probabilistic_bisector::{Bisectable, ProbabilisticBisector};
 use rand::distributions::Distribution;
 use statrs::distribution::Normal;
 use trellis_runner::GenerateBuilder;
@@ -57,7 +57,7 @@ fn brent_comparison() {
         noise_kernel: Normal::new(0.0, 0.001).unwrap(),
     };
     let domain = -4.0..1.0;
-    let bisector = ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_nine_percent());
+    let bisector = ProbabilisticBisector::new(domain, ConfidenceLevel::ninety_nine_percent());
 
     let runner = bisector
         .build_for(stochastic)
