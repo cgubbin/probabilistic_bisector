@@ -427,7 +427,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "probabalistic_bisector"
+name = "probabilistic_bisector"
 version = "0.1.0"
 dependencies = [
  "approx",
