@@ -13,6 +13,39 @@
 //! consequence of observational noise each query has probability 1 - p(t) of being incorrect. To
 //! account for this the algorithm updates a probability distribution which attempts to represent
 //! knowledge of the true root x. A full description is available in the PhD thesis of [R. Waeber](https://people.orie.cornell.edu/shane/theses/ThesisRolfWaeber.pdf).
+//!
+//! ```rust
+//! use probabalistic_bisector::{Bisectable, ProbabalisticBisector, GenerateBuilder, Confidence,
+//! ConfidenceLevel};
+//!
+//! struct Linear {
+//!     gradient: f64,
+//!     intercept: f64,
+//! }
+//!
+//! impl Bisectable<f64> for Linear {
+//!     // This function can be noisy!
+//!     fn evaluate(&self, x: f64) -> f64 {
+//!         self.gradient * x + self.intercept
+//!     }
+//! }
+//!
+//! let problem = Linear { gradient: 1.0, intercept: 0.0 };
+//!
+//! let domain = -1.0..1.0;
+//! let bisector = ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_nine_percent());
+//!
+//! let runner = bisector
+//!     .build_for(problem)
+//!     .configure(|state| state.max_iters(1000).relative_tolerance(1e-3))
+//!     .finalise()
+//!     .unwrap();
+//!
+//! let result = runner.run().unwrap().result;
+//!
+//! assert!(result.interval.contains(0.0));
+//!
+//! ```
 
 // In the PBA we cannot be certain of the true location of the root. Instead we track a
 // probability distribution which represents the sum of our knowledge about it's best location.
@@ -31,27 +64,23 @@ mod distribution;
 // This module contains methods to compute and update confidence intervals as described in §3.3
 mod interval;
 
-use confidence::{ConfidenceLevel, Scale, SignificanceLevel};
+mod error;
+
+use confi::SignificanceLevel;
 use distribution::{Distribution, DistributionError};
+pub use error::Error;
 pub(crate) use interval::CombinedConfidenceInterval;
 use interval::ConfidenceIntervals;
 use num_traits::{Float, FromPrimitive};
 use std::{fmt, iter, ops::Range};
 use trellis_runner::{Calculation, Problem, TrellisFloat, UserState};
 
-#[derive(Debug, thiserror::Error)]
-pub enum ProbabalisticBisectorError {
-    #[error("error in distribution computation: {0}")]
-    DistributionError(#[from] DistributionError),
-    #[error("failed to determine the function sign at {0} in less than {1} iterations")]
-    SignDeterminationError(f64, usize),
-    #[error("in computing the slope of the function, no root was detected in the domain")]
-    NoRootDetected,
-}
+pub use confi::{Confidence, ConfidenceLevel};
+pub use trellis_runner::GenerateBuilder;
 
 // Representing the sign of a number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Sign {
+pub enum Sign {
     Positive,
     Negative,
     Zero,
@@ -80,7 +109,7 @@ impl Sign {
 }
 
 // Trait for bisectable objective functions
-pub(crate) trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
+pub trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
     // Evaluate the objective function at the given point.
     //
     // This method is expected to be stochastic, meaning it may return different values for the
@@ -99,14 +128,14 @@ pub(crate) trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
         domain: &Range<T>,
         confidence_level: ConfidenceLevel<T>,
         max_iter: usize,
-    ) -> Result<Sign, ProbabalisticBisectorError> {
+    ) -> Result<Sign, Error<T>> {
         let sign_start = self.sign(domain.start, confidence_level, max_iter)?;
         let sign_end = self.sign(domain.end, confidence_level, max_iter)?;
 
         match (sign_start, sign_end) {
             (Sign::Positive, Sign::Negative) => Ok(Sign::Negative),
             (Sign::Negative, Sign::Positive) => Ok(Sign::Positive),
-            _ => Err(ProbabalisticBisectorError::NoRootDetected),
+            _ => Err(Error::NoRootDetected),
         }
     }
 
@@ -136,7 +165,7 @@ pub(crate) trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
         x: T,
         confidence_level: ConfidenceLevel<T>,
         max_iter: usize,
-    ) -> Result<Sign, ProbabalisticBisectorError> {
+    ) -> Result<Sign, Error<T>> {
         let mut random_walk = T::zero();
         let p_c = confidence_level.probability();
         let two = T::one() + T::one();
@@ -148,31 +177,23 @@ pub(crate) trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
 
             let power_test = ((two * n) * ((n + one).ln() - two.ln() - p_c.ln())).sqrt();
 
-            dbg!(&random_walk, &power_test);
             if random_walk.abs() > power_test {
                 return Ok(random_walk.into());
             }
         }
 
-        Err(ProbabalisticBisectorError::SignDeterminationError(
-            x.to_f64().unwrap(),
-            max_iter,
-        ))
+        Err(Error::SignDeterminationError(x.to_f64().unwrap(), max_iter))
     }
 }
 
-pub(crate) struct ProbabalisticBisector<T> {
+pub struct ProbabalisticBisector<T> {
     // The range of values expected with high certainty to contain the true value of the root
-    //
-    // When creating this struct we transform the domain into logarithmic space, scaled on [, 1].
-    // This improves convergence and ensures robust behaviour for inputs which vary over many
-    // orders of magnitude
     domain: Range<T>,
-    // The scaling factor for the domain
+    // The scaler for the domain.
     //
-    // The logarithmic domain is scaled to [0, 1] to improve convergence.
-    scaling_factor: T,
-    shift: T,
+    // The solver operates internally on range [0, 1] to improve convergence. The [`Scaler`]
+    // converts values from this range to the true range of function input.
+    scaler: Scaler<T>,
     // The maximum number of elements to use in computing the underlying probability distribution
     n_max: usize,
     // The maximum number of iterations
@@ -180,72 +201,109 @@ pub(crate) struct ProbabalisticBisector<T> {
     // The confidence level
     confidence_level: ConfidenceLevel<T>,
     significance: SignificanceLevel<T>,
-    target_width: T,
 }
 
-impl<T: Float + FromPrimitive + std::fmt::Debug> ProbabalisticBisector<T> {
-    pub(crate) fn new(
-        domain: Range<T>,
-        confidence_level: ConfidenceLevel<T>,
-        target_width: T,
-    ) -> Self {
-        // TODO: Original impl set the significance to double this value. Does this make sense?
-        let significance: SignificanceLevel<T> = confidence_level.into();
+struct Scaler<T> {
+    shift: T,
+    factor: T,
+    flip_sign: bool,
+    log_transform: bool,
+}
 
-        // Transform the domain into logarithmic space
-        let log_10_scaled_domain = domain.start.log10()..domain.end.log10();
-        let scaling_factor =
-            (log_10_scaled_domain.end - log_10_scaled_domain.start) / T::from_f64(2.0).unwrap();
-        let shift = -T::one() - log_10_scaled_domain.start / scaling_factor;
+impl<T: Float + FromPrimitive> Scaler<T> {
+    fn new(mut raw: Range<T>) -> Self {
+        let mut log_transform = false;
+        let mut flip_sign = false;
+        let (factor, shift) = match (raw.start.is_sign_positive(), raw.end.is_sign_positive()) {
+            // If the range is all positive consider a logarithmic transform
+            (true, true) => {
+                // If there is a significant disparity between the start and endpoints a
+                // logarithmic transform can be useful
+                if raw.end / raw.start > T::from_f64(1e3).unwrap() {
+                    raw = raw.start.log10()..raw.end.log10();
+                    log_transform = true;
+                }
+                let scaling_factor = (raw.end - raw.start) / T::from_f64(2.0).unwrap();
+                let shift = -T::one() - raw.start / scaling_factor;
+                (scaling_factor, shift)
+            }
+            // If the range changes sign just rescale
+            (false, true) => {
+                let scaling_factor = (raw.end - raw.start) / T::from_f64(2.0).unwrap();
+                let shift = -T::one() - raw.start / scaling_factor;
+                (scaling_factor, shift)
+            }
+            (false, false) => {
+                flip_sign = true;
+                raw = -raw.end..-raw.start;
 
-        // let domain = (log_10_scaled_domain.start / scaling_factor + shift)
-        //     ..(log_10_scaled_domain.end / scaling_factor + shift);
-        //
-        // let actual = (domain.start - shift) * scaling_factor..(domain.end - shift) * scaling_factor;
-        // dbg!(&domain, &actual);
-        //
-        // panic!();
-        // let scaling_factor = log_10_scaled_domain.end;
-        // let domain = (log_10_scaled_domain.start / scaling_factor)..T::one();
-        let domain = -T::one()..T::one();
+                if raw.end / raw.start > T::from_f64(1e3).unwrap() {
+                    raw = raw.start.log10()..raw.end.log10();
+                    log_transform = true;
+                }
+
+                let scaling_factor = (raw.end - raw.start) / T::from_f64(2.0).unwrap();
+                let shift = -T::one() - raw.start / scaling_factor;
+                (scaling_factor, shift)
+            }
+            _ => unreachable!(
+                "if the start is positive and the end is negative the search range is empty."
+            ),
+        };
 
         Self {
-            domain,
-            scaling_factor,
             shift,
-            n_max: 1000,
-            max_iter: 100,
-            confidence_level,
-            significance,
-            target_width,
+            factor,
+            flip_sign,
+            log_transform,
         }
     }
 
     fn shift_sample(&self, sample: T) -> T {
-        (sample - self.shift) * self.scaling_factor
+        sample - self.shift
     }
 
     fn unscale_sample(&self, sample: T) -> T {
-        T::from_f64(10.0).unwrap().powf(self.shift_sample(sample))
-
-        // T::from_f64(10.0)
-        //     .unwrap()
-        //     .powf(self.scaling_factor * sample)
+        let sign = if self.flip_sign { -T::one() } else { T::one() };
+        if self.log_transform {
+            return T::from_f64(10.0)
+                .unwrap()
+                .powf(self.shift_sample(sample) * self.factor * sign);
+        }
+        self.shift_sample(sample) * self.factor * sign
     }
 
-    fn unscaled_domain(&self, domain: Range<T>) -> Range<T> {
-        self.unscale_sample(domain.start)..self.unscale_sample(domain.end)
+    fn unscaled_domain(&self) -> Range<T> {
+        self.unscale_sample(-T::one())..self.unscale_sample(T::one())
     }
 }
 
-pub(crate) struct BisectorState<T> {
+impl<T: Float + FromPrimitive + std::fmt::Debug> ProbabalisticBisector<T> {
+    pub fn new(domain: Range<T>, confidence_level: ConfidenceLevel<T>) -> Self {
+        // TODO: Original impl set the significance to double this value. Does this make sense?
+        let significance: SignificanceLevel<T> = confidence_level.into();
+
+        let scaler = Scaler::new(domain.clone());
+        let domain = -T::one()..T::one();
+
+        Self {
+            domain,
+            scaler,
+            n_max: 1000,
+            max_iter: 100,
+            confidence_level,
+            significance,
+        }
+    }
+}
+
+pub struct BisectorState<T> {
     confidence: Option<ConfidenceIntervals<T>>,
     distribution: Option<Distribution<T>>,
     slope: Option<Sign>,
     best_width: T,
     prev_best_width: T,
     current_width: T,
-    target_width: T,
 }
 
 impl<T> BisectorState<T> {
@@ -257,21 +315,18 @@ impl<T> BisectorState<T> {
         slope: Sign,
         confidence_level: ConfidenceLevel<T>,
         significance_level: SignificanceLevel<T>,
-        target_width: T,
-    ) -> Result<(), ProbabalisticBisectorError>
+    ) -> Result<(), Error<T>>
     where
         T: Float + std::fmt::Debug,
     {
         self.confidence = Some(ConfidenceIntervals::new(
             max_iter,
             confidence_level,
-            Scale::Log10,
             significance_level,
         ));
 
         self.distribution = Some(Distribution::new(domain, n_max)?);
         self.slope = Some(slope);
-        self.target_width = target_width;
         Ok(())
     }
 }
@@ -291,7 +346,6 @@ where
             best_width: T::max_value(),
             prev_best_width: T::max_value(),
             current_width: T::max_value(),
-            target_width: T::zero(),
         }
     }
 
@@ -325,10 +379,10 @@ where
 
 impl<O, T> Calculation<O, BisectorState<T>> for ProbabalisticBisector<T>
 where
-    T: Float + FromPrimitive + fmt::Debug + iter::Sum + TrellisFloat,
+    T: Float + FromPrimitive + fmt::Debug + iter::Sum + TrellisFloat + 'static,
     O: Bisectable<T>,
 {
-    type Error = ProbabalisticBisectorError;
+    type Error = Error<T>;
     type Output = CombinedConfidenceInterval<T>;
     const NAME: &'static str = "Probabalistic Bisector Algorithm";
 
@@ -337,7 +391,7 @@ where
         problem: &mut Problem<O>,
         mut state: BisectorState<T>,
     ) -> Result<BisectorState<T>, Self::Error> {
-        let unscaled_domain = self.unscaled_domain(self.domain.clone());
+        let unscaled_domain = self.scaler.unscaled_domain();
 
         let slope_sign =
             problem.slope_sign(&unscaled_domain, self.confidence_level, self.max_iter)?;
@@ -348,7 +402,6 @@ where
             slope_sign,
             self.confidence_level,
             self.significance,
-            self.target_width,
         )?;
         Ok(state)
     }
@@ -365,7 +418,7 @@ where
         // try to calculate the sign of the sample.
         let next_sample = distribution.median();
         // Translate to real-space: We store in a scaled log space
-        let unscaled_sample = self.unscale_sample(next_sample);
+        let unscaled_sample = self.scaler.unscale_sample(next_sample);
 
         let try_sign_guess = problem.sign(unscaled_sample, self.confidence_level, self.n_max);
 
@@ -392,8 +445,11 @@ where
             .is_err()
         {
             tracing::error!("terminating as the insertion points are essentially overlapping points currently in the distribution");
-            panic!();
-            // return Ok(state.terminate_due_to(Reason::Converged));
+            let confidence_levels = state.confidence.unwrap();
+            let mut confidence = confidence_levels.last().unwrap();
+            confidence.transform(&self.scaler);
+
+            return Err(Error::OverlappingSamples(confidence));
         }
 
         // Update the confidence interval;
@@ -404,8 +460,11 @@ where
                 Typically this means that the algorithm is focussed on an interval which is narrower than can be resolved.
                 The distribution gets multiple peaks, and the convex hull used to update the confidence intervals vanishes.");
 
-            panic!();
-            // return Ok(state.terminate_due_to(Reason::Converged));
+            let confidence_levels = state.confidence.unwrap();
+            let mut confidence = confidence_levels.last().unwrap();
+            confidence.transform(&self.scaler);
+
+            return Err(Error::EmptyHull(confidence));
         }
 
         // Set the new width on the state variable
@@ -425,71 +484,122 @@ where
     ) -> Result<Self::Output, Self::Error> {
         let confidence_levels = state.confidence.unwrap();
         let mut confidence = confidence_levels.last().unwrap();
-        // Roll back the scaling
-        confidence.scaled(self.scaling_factor, self.shift);
-        // Return after converting to linear space
-        Ok(confidence.linear())
+        confidence.transform(&self.scaler);
+        Ok(confidence)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rand::distributions::Distribution;
-    use statrs::distribution::Normal;
-    use trellis_runner::GenerateBuilder;
+    // struct TestFunction {
+    //     dist: Normal,
+    // }
+    //
+    // impl TestFunction {
+    //     fn new(std_dev: f64) -> Self {
+    //         TestFunction {
+    //             dist: Normal::new(0.0, std_dev).unwrap(),
+    //         }
+    //     }
+    // }
+    //
+    // impl Bisectable<f64> for TestFunction {
+    //     fn evaluate(&self, x: f64) -> f64 {
+    //         let result = (x - 5.0) + self.dist.sample(&mut rand::thread_rng());
+    //         dbg!(&result, &x);
+    //         result
+    //     }
+    // }
+    // //
+    // // #[tracing_test::traced_test]
+    // #[test]
+    // fn bisect_test() {
+    //     let f = TestFunction::new(0.000001);
+    //     let domain = 1e-3..10.0;
+    //     let bisector = ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_five_percent());
+    //
+    //     let runner = bisector
+    //         .build_for(f)
+    //         .configure(|state| state.max_iters(100))
+    //         .finalise()
+    //         .unwrap();
+    //
+    //     let result = runner.run();
+    //     if let Err(e) = result.as_ref() {
+    //         eprintln!("{e:?}");
+    //     }
+    //     assert!(result.is_ok());
+    //     let confidence_interval = result.unwrap();
+    //
+    //     // dbg!(confidence_interval);
+    //     // let fun = |x| {
+    //     //     x - Normal::new(0.55, std_dev)
+    //     //         .unwrap()
+    //     //         .sample(&mut rand::thread_rng())
+    //     // };
+    //     // let runner = bisect(fun, 0.0, 1.0, ConfidenceLevel::NinetyNinePointNine);
+    //     // let result = runner.find();
+    //     //
+    //     // dbg!(result);
+    // }
 
-    use super::*;
-
-    struct TestFunction {
-        dist: Normal,
-    }
-
-    impl TestFunction {
-        fn new(std_dev: f64) -> Self {
-            TestFunction {
-                dist: Normal::new(0.0, std_dev).unwrap(),
-            }
-        }
-    }
-
-    impl Bisectable<f64> for TestFunction {
-        fn evaluate(&self, x: f64) -> f64 {
-            let result = (x - 5.0) + self.dist.sample(&mut rand::thread_rng());
-            dbg!(&result, &x);
-            result
-        }
-    }
-
-    #[tracing_test::traced_test]
     #[test]
-    fn bisect_test() {
-        let f = TestFunction::new(0.000001);
-        let domain = 1e-3..10.0;
-        let bisector =
-            ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_five_percent(), 1e-6);
+    fn scaler_with_positive_domain_reconstructs() {
+        use super::Scaler;
+        let raw = 1.0..10.0;
+        let scaler = Scaler::new(raw.clone());
 
-        let runner = bisector
-            .build_for(f)
-            .configure(|state| state.max_iters(100))
-            .finalise()
-            .unwrap();
+        let unscaled = scaler.unscaled_domain();
 
-        let result = runner.run();
-        if let Err(e) = result.as_ref() {
-            eprintln!("{e:?}");
-        }
-        assert!(result.is_ok());
-        let confidence_interval = result.unwrap();
+        approx::assert_relative_eq!(raw.start, unscaled.start, epsilon = 1e-10);
+        approx::assert_relative_eq!(raw.end, unscaled.end, epsilon = 1e-10);
+    }
 
-        // dbg!(confidence_interval);
-        // let fun = |x| {
-        //     x - Normal::new(0.55, std_dev)
-        //         .unwrap()
-        //         .sample(&mut rand::thread_rng())
-        // };
-        // let runner = bisect(fun, 0.0, 1.0, ConfidenceLevel::NinetyNinePointNine);
-        // let result = runner.find();
-        //
-        // dbg!(result);
+    #[test]
+    fn scaler_with_log_positive_domain_reconstructs() {
+        use super::Scaler;
+        let raw = 1.0..1e6;
+        let scaler = Scaler::new(raw.clone());
+
+        let unscaled = scaler.unscaled_domain();
+
+        approx::assert_relative_eq!(raw.start, unscaled.start, epsilon = 1e-10);
+        approx::assert_relative_eq!(raw.end, unscaled.end, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn scaler_with_negative_domain_reconstructs() {
+        use super::Scaler;
+        let raw = -10.0..1.0;
+        let scaler = Scaler::new(raw.clone());
+
+        let unscaled = scaler.unscaled_domain();
+
+        approx::assert_relative_eq!(raw.start, unscaled.start, epsilon = 1e-10);
+        approx::assert_relative_eq!(raw.end, unscaled.end, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn scaler_with_log_negative_domain_reconstructs() {
+        use super::Scaler;
+        let raw = -1e6..1.0;
+        let scaler = Scaler::new(raw.clone());
+
+        let unscaled = scaler.unscaled_domain();
+
+        approx::assert_relative_eq!(raw.start, unscaled.start, epsilon = 1e-10);
+        approx::assert_relative_eq!(raw.end, unscaled.end, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn scaler_with_domain_spanning_origin_reconstructs() {
+        use super::Scaler;
+        let raw = -10.0..10.0;
+        let scaler = Scaler::new(raw.clone());
+
+        let unscaled = scaler.unscaled_domain();
+
+        approx::assert_relative_eq!(raw.start, unscaled.start, epsilon = 1e-10);
+        approx::assert_relative_eq!(raw.end, unscaled.end, epsilon = 1e-10);
     }
 }

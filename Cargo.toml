@@ -8,15 +8,17 @@ description = "bisection for one-dimensional functions in the presence of noise"
 repository = "https://github.com/cgubbin/probabalistic_bisector"
 
 [dependencies]
+confi = "0.1.0"
 num-traits = "0.2.19"
 statrs = "0.17.1"
 thiserror = "2.0.0"
 tracing = "0.1.40"
 trellis-runner = "0.1.1"
-confidence = { path = "../confidence/" }
 
 [dev-dependencies]
 approx = "0.5.1"
+argmin = "0.10.0"
+argmin-observer-slog = "0.1.0"
 rand = "0.8.5"
 rand_isaac = "0.3.0"
 tracing-test = { version = "0.2.5", features = ["no-env-filter"] }

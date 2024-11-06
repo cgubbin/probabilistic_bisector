@@ -1,7 +1,7 @@
 # probabalistic bisection
 ---
 
-An implementation of linear bisection for finding the roots of a stochastic function.
+An implementation of linear bisection for finding the roots of a stochastic function. The current implementation only works for functions with one root in the search range of interest.
 
 Root-finding is a common problem in scientific computation. When the function to be studied is deterministic a simple linear bisection algorithm or something more sophisticated such as Brent's method can be applied. These algorithms rely on the deterministic nature of the objective function: if they evaluate the function multiple times for a given input they expect the output to be the same in each case.
 
@@ -14,7 +14,7 @@ This crate identifies the roots of stochastic 1D functions by implementation of 
 
 A target objective function must implement the `Bisectable` trait. This has one user-facing method, `evaluate`. It is expected that for implementors of `Bisectable` the `evaluate` method is noisy. 
 ```rust
-use probabalistic_bisector::Bisectable;
+use probabalistic_bisector::{Bisectable, ProbabalisticBisector, GenerateBuilder, Confidence, ConfidenceLevel};
 
 struct Linear {
     gradient: f64,
@@ -22,8 +22,25 @@ struct Linear {
 }
 
 impl Bisectable<f64> for Linear {
-    fn evaluate(&self, x: T) -> T {
-        self.gradient * x + intercept
+    // This function can be noisy!
+    fn evaluate(&self, x: f64) -> f64 {
+        self.gradient * x + self.intercept 
     }
 }
+
+let problem = Linear { gradient: 1.0, intercept: 0.0 };
+
+let domain = -1.0..1.0;
+let bisector = ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_nine_percent());
+
+let runner = bisector
+    .build_for(problem)
+    .configure(|state| state.max_iters(1000).relative_tolerance(1e-3))
+    .finalise()
+    .unwrap();
+
+let result = runner.run().unwrap().result;
+
+assert!(result.interval.contains(0.0));
+
 ```

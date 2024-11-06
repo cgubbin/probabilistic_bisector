@@ -11,24 +11,21 @@
 //! The implementation in this module follows that described in §3.3 of Waeber.
 
 use super::Distribution;
+use confi::{Confidence, ConfidenceInterval, ConfidenceLevel, SignificanceLevel};
 use num_traits::{Float, FromPrimitive};
 use std::ops::RangeInclusive;
 
-use confidence::{Confidence, ConfidenceInterval, ConfidenceLevel, Scale, SignificanceLevel};
-
 // Confidence intervals over the course of a PBA execution
 #[derive(Debug)]
-pub(crate) struct ConfidenceIntervals<T> {
+pub struct ConfidenceIntervals<T> {
     // The current number of iterations
     n: usize,
     // The maximum number of iterations
-    n_max: usize,
+    _n_max: usize,
     // The level of confidence
     confidence_level: ConfidenceLevel<T>,
     // The level of significance used in hypothesis testing
     significance: SignificanceLevel<T>,
-    // The scale of the confidence intervals
-    scale: Scale,
     // Confidence intervals seen in iteration order
     values: Vec<CombinedConfidenceInterval<T>>,
 }
@@ -46,15 +43,13 @@ impl<T> ConfidenceIntervals<T> {
     pub(super) fn new(
         n_max: usize,
         confidence_level: ConfidenceLevel<T>,
-        scale: Scale,
         significance: SignificanceLevel<T>,
     ) -> Self {
         Self {
             n: 0,
-            n_max,
+            _n_max: n_max,
             confidence_level,
             significance,
-            scale,
             values: Vec::with_capacity(n_max),
         }
     }
@@ -73,32 +68,32 @@ impl<T> ConfidenceIntervals<T> {
         self.values[self.values.len() - 1].interval.width()
     }
 
-    pub(super) fn last_width_seq(&self) -> T
-    where
-        T: Float + FromPrimitive,
-    {
-        self.values[self.values.len() - 1].seq.width()
-    }
+    // pub(super) fn last_width_seq(&self) -> T
+    // where
+    //     T: Float + FromPrimitive,
+    // {
+    //     self.values[self.values.len() - 1].seq.width()
+    // }
 
-    fn width(&self, n: usize) -> T
-    where
-        T: Float + FromPrimitive,
-    {
-        if n >= self.values.len() {
-            panic!("n out of bounds");
-        }
-        self.values[n].interval.width()
-    }
-
-    fn seq_width(&self, n: usize) -> T
-    where
-        T: Float + FromPrimitive,
-    {
-        if n >= self.values.len() {
-            panic!("n out of bounds");
-        }
-        self.values[n].seq.width()
-    }
+    // fn width(&self, n: usize) -> T
+    // where
+    //     T: Float + FromPrimitive,
+    // {
+    //     if n >= self.values.len() {
+    //         panic!("n out of bounds");
+    //     }
+    //     self.values[n].interval.width()
+    // }
+    //
+    // fn seq_width(&self, n: usize) -> T
+    // where
+    //     T: Float + FromPrimitive,
+    // {
+    //     if n >= self.values.len() {
+    //         panic!("n out of bounds");
+    //     }
+    //     self.values[n].seq.width()
+    // }
 
     pub(super) fn update(&mut self, posterior: &Distribution<T>) -> Result<(), ConfidenceError>
     where
@@ -166,7 +161,6 @@ impl<T> ConfidenceIntervals<T> {
                 ..=posterior.samples[convex_hull_endpoints.end + 1], // +1 as there are n + 1 samples, anv we
             // want the last one
             self.confidence_level,
-            self.scale,
         ))
     }
 
@@ -212,7 +206,6 @@ impl<T> ConfidenceIntervals<T> {
         Ok(SequentialConfidenceInterval::new(
             interval,
             self.confidence_level,
-            self.scale,
         ))
     }
 }
@@ -222,20 +215,8 @@ impl<T> ConfidenceIntervals<T> {
 struct SequentialConfidenceInterval<T>(ConfidenceInterval<T>);
 
 impl<T: Float + FromPrimitive> Confidence<T> for SequentialConfidenceInterval<T> {
-    fn new(range: RangeInclusive<T>, confidence_level: ConfidenceLevel<T>, scale: Scale) -> Self {
-        Self(ConfidenceInterval::new(range, confidence_level, scale))
-    }
-
-    fn log10(self) -> Self {
-        Self(self.0.log10())
-    }
-
-    fn linear(self) -> Self {
-        Self(self.0.linear())
-    }
-
-    fn scaled(&mut self, scale: T, shift: T) {
-        self.0.scaled(scale, shift)
+    fn new(range: RangeInclusive<T>, confidence_level: ConfidenceLevel<T>) -> Self {
+        Self(ConfidenceInterval::new(range, confidence_level))
     }
 
     fn start(&self) -> &T {
@@ -249,18 +230,14 @@ impl<T: Float + FromPrimitive> Confidence<T> for SequentialConfidenceInterval<T>
     fn confidence_level(&self) -> ConfidenceLevel<T> {
         self.0.confidence_level()
     }
-
-    fn scale(&self) -> Scale {
-        self.0.scale()
-    }
 }
 
 #[derive(Debug, Clone)]
 // Confidence intervals represent the range of values expected to enclose the true value to a
 // specified confidence level.
-pub(crate) struct CombinedConfidenceInterval<T> {
+pub struct CombinedConfidenceInterval<T> {
     // The confidence interval evaluated at a given iteration
-    pub(crate) interval: ConfidenceInterval<T>,
+    pub interval: ConfidenceInterval<T>,
     // The sequential confidence interval at the iteration: sequential confidence intervals are
     // guaranteed to decrease as the algorithm proceeds. No such guarantee is available for the
     // bare interval.
@@ -268,20 +245,16 @@ pub(crate) struct CombinedConfidenceInterval<T> {
 }
 
 impl<T: Float + FromPrimitive> CombinedConfidenceInterval<T> {
-    fn new(interval: ConfidenceInterval<T>, seq: SequentialConfidenceInterval<T>) -> Self {
-        Self { interval, seq }
-    }
-
-    pub(crate) fn scaled(&mut self, scale: T, shift: T) {
-        self.interval.scaled(scale, shift);
-        self.seq.scaled(scale, shift);
-    }
-
-    pub(crate) fn linear(self) -> Self {
-        Self {
-            interval: self.interval.linear(),
-            seq: self.seq.linear(),
-        }
+    pub(crate) fn transform(&mut self, scaler: &crate::Scaler<T>) {
+        self.interval = ConfidenceInterval::new(
+            scaler.unscale_sample(*self.interval.start())
+                ..=scaler.unscale_sample(*self.interval.end()),
+            self.interval.confidence_level(),
+        );
+        self.seq = SequentialConfidenceInterval(ConfidenceInterval::new(
+            scaler.unscale_sample(*self.seq.0.start())..=scaler.unscale_sample(*self.seq.0.end()),
+            self.seq.0.confidence_level(),
+        ));
     }
 }
 

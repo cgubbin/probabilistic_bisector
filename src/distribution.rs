@@ -15,7 +15,7 @@ use statrs::{
 use std::{fmt, iter, ops::Range};
 
 use super::Sign;
-use confidence::ConfidenceLevel;
+use confi::ConfidenceLevel;
 
 // How close we allow points in the distribution to be before we consider them to be equal
 const EPSILON: f64 = 1e-15;
@@ -42,7 +42,7 @@ pub(super) struct Distribution<T> {
     ///
     /// We pre-allocate elements in the `samples` and `log_probability_density` vectors
     /// so during execution we can avoid reallocating.
-    n_max: usize,
+    _n_max: usize,
     /// The sample nodes of the distribution. This is a vector of length `num_samples`.
     ///
     /// This method retains an ordered vector. The creation of the [`Distribution`] object enters
@@ -80,7 +80,7 @@ impl<T> Distribution<T> {
             return Err(DistributionError::InvalidDomain);
         }
         Ok(Self {
-            n_max,
+            _n_max: n_max,
             samples: {
                 let mut samples = Vec::with_capacity(n_max + 2);
                 samples.push(domain.start);
@@ -392,7 +392,7 @@ mod tests {
     use super::Distribution;
     use super::Sign;
     use super::{Continuous, ContinuousCDF};
-    use confidence::ConfidenceLevel;
+    use confi::ConfidenceLevel;
     use rand::{Rng, SeedableRng};
     use rand_isaac::Isaac64Rng;
 
