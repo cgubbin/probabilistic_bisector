@@ -65,7 +65,7 @@ fn brent_comparison() {
         .finalise()
         .unwrap();
 
-    let probabalistic = runner.run().unwrap().result;
+    let probabilistic = runner.run().unwrap().result;
 
-    assert!(probabalistic.interval.contains(brent.state.param.unwrap()));
+    assert!(probabilistic.interval.contains(brent.state.param.unwrap()));
 }
