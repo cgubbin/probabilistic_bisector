@@ -1,4 +1,4 @@
-//! In a probabalistic bisection algorithm we can only observe the objective function in the
+//! In a probabilistic bisection algorithm we can only observe the objective function in the
 //! presence of noise. This means that, no matter how many observations are made we can never find
 //! the value of the root to arbitrary precision.
 //!

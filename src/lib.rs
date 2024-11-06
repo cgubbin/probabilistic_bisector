@@ -15,7 +15,7 @@
 //! knowledge of the true root x. A full description is available in the PhD thesis of [R. Waeber](https://people.orie.cornell.edu/shane/theses/ThesisRolfWaeber.pdf).
 //!
 //! ```rust
-//! use probabalistic_bisector::{Bisectable, ProbabalisticBisector, GenerateBuilder, Confidence,
+//! use probabilistic_bisector::{Bisectable, ProbabilisticBisector, GenerateBuilder, Confidence,
 //! ConfidenceLevel};
 //!
 //! struct Linear {
@@ -33,7 +33,7 @@
 //! let problem = Linear { gradient: 1.0, intercept: 0.0 };
 //!
 //! let domain = -1.0..1.0;
-//! let bisector = ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_nine_percent());
+//! let bisector = ProbabilisticBisector::new(domain, ConfidenceLevel::ninety_nine_percent());
 //!
 //! let runner = bisector
 //!     .build_for(problem)
@@ -186,7 +186,7 @@ pub trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
     }
 }
 
-pub struct ProbabalisticBisector<T> {
+pub struct ProbabilisticBisector<T> {
     // The range of values expected with high certainty to contain the true value of the root
     domain: Range<T>,
     // The scaler for the domain.
@@ -278,7 +278,7 @@ impl<T: Float + FromPrimitive> Scaler<T> {
     }
 }
 
-impl<T: Float + FromPrimitive + std::fmt::Debug> ProbabalisticBisector<T> {
+impl<T: Float + FromPrimitive + std::fmt::Debug> ProbabilisticBisector<T> {
     pub fn new(domain: Range<T>, confidence_level: ConfidenceLevel<T>) -> Self {
         // TODO: Original impl set the significance to double this value. Does this make sense?
         let significance: SignificanceLevel<T> = confidence_level.into();
@@ -377,14 +377,14 @@ where
     }
 }
 
-impl<O, T> Calculation<O, BisectorState<T>> for ProbabalisticBisector<T>
+impl<O, T> Calculation<O, BisectorState<T>> for ProbabilisticBisector<T>
 where
     T: Float + FromPrimitive + fmt::Debug + iter::Sum + TrellisFloat + 'static,
     O: Bisectable<T>,
 {
     type Error = Error<T>;
     type Output = CombinedConfidenceInterval<T>;
-    const NAME: &'static str = "Probabalistic Bisector Algorithm";
+    const NAME: &'static str = "Probabilistic Bisector Algorithm";
 
     fn initialise(
         &mut self,
@@ -516,7 +516,7 @@ mod tests {
     // fn bisect_test() {
     //     let f = TestFunction::new(0.000001);
     //     let domain = 1e-3..10.0;
-    //     let bisector = ProbabalisticBisector::new(domain, ConfidenceLevel::ninety_five_percent());
+    //     let bisector = ProbabilisticBisector::new(domain, ConfidenceLevel::ninety_five_percent());
     //
     //     let runner = bisector
     //         .build_for(f)

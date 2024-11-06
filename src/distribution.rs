@@ -1,4 +1,4 @@
-// This module describes the probability distribution underlying the probabalistic bisection
+// This module describes the probability distribution underlying the probabilistic bisection
 // algorithm.
 //
 // As we true value of the root cannot be located in the presence of noise we instead build a
@@ -171,7 +171,7 @@ impl<T> Distribution<T> {
 
     // Note here we do not use the implementation from statrs
     //
-    // Statrs allows us to find the median using theeir auto-implemenation of the inverse CDF from
+    // Statrs allows us to find the median using theeir auto-implementation of the inverse CDF from
     // the [`ContinuousCDF`] trait. This is a numerical solve and is not appropriate for this
     // method for two reasons:
     // 1. We need to find the result to very high accuracy in order to get a sufficiently narrow
