@@ -128,7 +128,7 @@ pub trait Bisectable<T: Float + FromPrimitive> {
         domain: &Range<T>,
         confidence_level: ConfidenceLevel<T>,
         max_iter: usize,
-    ) -> Result<Sign, Error<T>> {
+    ) -> Result<Sign, Error> {
         let sign_start = self.sign(domain.start, confidence_level, max_iter)?;
         let sign_end = self.sign(domain.end, confidence_level, max_iter)?;
 
@@ -165,7 +165,7 @@ pub trait Bisectable<T: Float + FromPrimitive> {
         x: T,
         confidence_level: ConfidenceLevel<T>,
         max_iter: usize,
-    ) -> Result<Sign, Error<T>> {
+    ) -> Result<Sign, Error> {
         let mut random_walk = T::zero();
         let p_c = confidence_level.probability();
         let two = T::one() + T::one();
@@ -315,7 +315,7 @@ impl<T> BisectorState<T> {
         slope: Sign,
         confidence_level: ConfidenceLevel<T>,
         significance_level: SignificanceLevel<T>,
-    ) -> Result<(), Error<T>>
+    ) -> Result<(), Error>
     where
         T: Float + std::fmt::Debug,
     {
@@ -379,10 +379,10 @@ where
 
 impl<O, T> Calculation<O, BisectorState<T>> for ProbabilisticBisector<T>
 where
-    T: Float + FromPrimitive + fmt::Debug + iter::Sum + TrellisFloat + 'static,
+    T: Float + FromPrimitive + fmt::Debug + iter::Sum + TrellisFloat,
     O: Bisectable<T>,
 {
-    type Error = Error<T>;
+    type Error = Error;
     type Output = CombinedConfidenceInterval<T>;
     const NAME: &'static str = "Probabilistic Bisector Algorithm";
 
@@ -449,7 +449,7 @@ where
             let mut confidence = confidence_levels.last().unwrap();
             confidence.transform(&self.scaler);
 
-            return Err(Error::OverlappingSamples(confidence));
+            return Err(Error::OverlappingSamples(confidence.to_f64().unwrap()));
         }
 
         // Update the confidence interval;
@@ -464,7 +464,7 @@ where
             let mut confidence = confidence_levels.last().unwrap();
             confidence.transform(&self.scaler);
 
-            return Err(Error::EmptyHull(confidence));
+            return Err(Error::EmptyHull(confidence.to_f64().unwrap()));
         }
 
         // Set the new width on the state variable

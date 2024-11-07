@@ -12,7 +12,7 @@
 
 use super::Distribution;
 use confi::{Confidence, ConfidenceInterval, ConfidenceLevel, SignificanceLevel};
-use num_traits::{Float, FromPrimitive};
+use num_traits::{Float, FromPrimitive, ToPrimitive};
 use std::ops::RangeInclusive;
 
 // Confidence intervals over the course of a PBA execution
@@ -232,6 +232,17 @@ impl<T: Float + FromPrimitive> Confidence<T> for SequentialConfidenceInterval<T>
     }
 }
 
+impl<T> SequentialConfidenceInterval<T> {
+    fn to_f64(self) -> Option<SequentialConfidenceInterval<f64>>
+    where
+        T: ToPrimitive,
+    {
+        self.0
+            .to_f64()
+            .map(|inner| SequentialConfidenceInterval(inner))
+    }
+}
+
 #[derive(Debug, Clone)]
 // Confidence intervals represent the range of values expected to enclose the true value to a
 // specified confidence level.
@@ -255,6 +266,19 @@ impl<T: Float + FromPrimitive> CombinedConfidenceInterval<T> {
             scaler.unscale_sample(*self.seq.0.start())..=scaler.unscale_sample(*self.seq.0.end()),
             self.seq.0.confidence_level(),
         ));
+    }
+}
+
+impl<T> CombinedConfidenceInterval<T> {
+    pub(crate) fn to_f64(self) -> Option<CombinedConfidenceInterval<f64>>
+    where
+        T: ToPrimitive,
+    {
+        // This should be an if-let chain...
+        match (self.interval.to_f64(), self.seq.to_f64()) {
+            (Some(interval), Some(seq)) => Some(CombinedConfidenceInterval { interval, seq }),
+            _ => None,
+        }
     }
 }
 

@@ -108,9 +108,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "confi"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce895cb99711b71683c1351a1f9f872364e992b2614fd25f253d8b8584f841e2"
+checksum = "9de9b6ddab2af7b56dcb9513afa12819f51072d2bf1ca704ab519885e96d54e5"
 dependencies = [
  "ndarray",
  "num-traits",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "probabilistic_bisector"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "approx",
  "argmin",
