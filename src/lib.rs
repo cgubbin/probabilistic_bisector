@@ -69,7 +69,7 @@ mod error;
 use confi::SignificanceLevel;
 use distribution::{Distribution, DistributionError};
 pub use error::Error;
-pub(crate) use interval::CombinedConfidenceInterval;
+pub use interval::CombinedConfidenceInterval;
 use interval::ConfidenceIntervals;
 use num_traits::{Float, FromPrimitive};
 use std::{fmt, iter, ops::Range};
