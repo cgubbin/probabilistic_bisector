@@ -109,7 +109,7 @@ impl Sign {
 }
 
 // Trait for bisectable objective functions
-pub trait Bisectable<T: Float + FromPrimitive + std::fmt::Debug> {
+pub trait Bisectable<T: Float + FromPrimitive> {
     // Evaluate the objective function at the given point.
     //
     // This method is expected to be stochastic, meaning it may return different values for the
