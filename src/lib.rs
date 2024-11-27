@@ -109,7 +109,7 @@ impl Sign {
 }
 
 // Trait for bisectable objective functions
-pub trait Bisectable<T: Float + FromPrimitive> {
+pub trait Bisectable<T: Float + FromPrimitive + fmt::Debug> {
     // Evaluate the objective function at the given point.
     //
     // This method is expected to be stochastic, meaning it may return different values for the
@@ -123,6 +123,7 @@ pub trait Bisectable<T: Float + FromPrimitive> {
     // It is a necessary condition that the function has a root within the domain. This means it is
     // required that the sign of the function changes between the start and end of the domain. We
     // can therefore determine the slope of the function by evaluating the sign at the start and end
+    #[tracing::instrument(ret, level = tracing::Level::DEBUG, skip(self))]
     fn slope_sign(
         &self,
         domain: &Range<T>,
@@ -160,6 +161,7 @@ pub trait Bisectable<T: Float + FromPrimitive> {
     //
     // This test is referred to as a curved boundary test. Many test functions are available, but
     // we choose to assume a random walk (Eq B.6) to define the stopping rule.
+    #[tracing::instrument(ret, level = tracing::Level::DEBUG, skip(self))]
     fn sign(
         &self,
         x: T,

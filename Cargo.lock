@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "probabilistic_bisector"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "approx",
  "argmin",
@@ -880,9 +880,9 @@ dependencies = [
 
 [[package]]
 name = "trellis-runner"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "242cabf3f50374f7832f69d36684cac293eaaad856bb62a2880bd87d5b9c35e5"
+checksum = "6dcda8d3f158744e98007a106a12c1be03b8d261578d04a15ee477e991375ced"
 dependencies = [
  "num-traits",
  "serde",
