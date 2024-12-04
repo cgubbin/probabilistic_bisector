@@ -115,7 +115,7 @@ dependencies = [
  "ndarray",
  "num-traits",
  "statrs",
- "thiserror 2.0.0",
+ "thiserror 2.0.4",
 ]
 
 [[package]]
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "probabilistic_bisector"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "approx",
  "argmin",
@@ -438,7 +438,7 @@ dependencies = [
  "rand",
  "rand_isaac",
  "statrs",
- "thiserror 2.0.0",
+ "thiserror 2.0.4",
  "tracing",
  "tracing-test",
  "trellis-runner",
@@ -726,11 +726,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.0"
+version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15291287e9bff1bc6f9ff3409ed9af665bec7a5fc8ac079ea96be07bca0e2668"
+checksum = "2f49a1853cf82743e3b7950f77e0f4d622ca36cf4317cba00c767838bac8d490"
 dependencies = [
- "thiserror-impl 2.0.0",
+ "thiserror-impl 2.0.4",
 ]
 
 [[package]]
@@ -746,9 +746,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.0"
+version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22efd00f33f93fa62848a7cab956c3d38c8d43095efda1decfc2b3a5dc0b8972"
+checksum = "8381894bb3efe0c4acac3ded651301ceee58a15d47c2e34885ed1908ad667061"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -880,9 +880,9 @@ dependencies = [
 
 [[package]]
 name = "trellis-runner"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dcda8d3f158744e98007a106a12c1be03b8d261578d04a15ee477e991375ced"
+checksum = "9c3c3d30eaadff7e5a8d8dcae499c7e0c06030fa89880bf5c5acb60b88384824"
 dependencies = [
  "num-traits",
  "serde",
