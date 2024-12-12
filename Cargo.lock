@@ -108,9 +108,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "confi"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9de9b6ddab2af7b56dcb9513afa12819f51072d2bf1ca704ab519885e96d54e5"
+checksum = "3b1929fc797d600d732bb3a77418a2947096a23371ca6c6294c62079d84e5875"
 dependencies = [
  "ndarray",
  "num-traits",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "probabilistic_bisector"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "approx",
  "argmin",
@@ -880,9 +880,9 @@ dependencies = [
 
 [[package]]
 name = "trellis-runner"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dcda8d3f158744e98007a106a12c1be03b8d261578d04a15ee477e991375ced"
+checksum = "9c3c3d30eaadff7e5a8d8dcae499c7e0c06030fa89880bf5c5acb60b88384824"
 dependencies = [
  "num-traits",
  "serde",
