@@ -19,6 +19,6 @@ trellis-runner = "0.1.4"
 approx = "0.5.1"
 argmin = "0.10.0"
 argmin-observer-slog = "0.1.0"
-rand = "0.8.5"
+rand = "0.9.0"
 rand_isaac = "0.3.0"
 tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
