@@ -171,7 +171,7 @@ impl<T> Distribution<T> {
 
     // Note here we do not use the implementation from statrs
     //
-    // Statrs allows us to find the median using theeir auto-implementation of the inverse CDF from
+    // Statrs allows us to find the median using their auto-implementation of the inverse CDF from
     // the [`ContinuousCDF`] trait. This is a numerical solve and is not appropriate for this
     // method for two reasons:
     // 1. We need to find the result to very high accuracy in order to get a sufficiently narrow
@@ -225,7 +225,9 @@ impl<T> Distribution<T> {
         }
 
         if last_width.is_none() || last_probability.is_none() {
-            dbg!(&self.samples);
+            eprintln!("expected last_width: {last_width:?} and last_probability: {last_probability:?} to be set");
+            eprintln!("final value of this {this:?}, does not exceed 0.5");
+            panic!("failed to find median of CDF");
         }
         let last_width = last_width.unwrap();
         let last_probability = last_probability.unwrap();
