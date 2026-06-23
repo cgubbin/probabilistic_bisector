@@ -1,16 +1,15 @@
 [package]
 name = "probabilistic_bisector"
 version = "0.1.6"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 authors = ["Christopher Gubbin <chris.gubbin@gmail.com>"]
 description = "bisection for one-dimensional functions in the presence of noise"
 repository = "https://github.com/cgubbin/probabalistic_bisector"
 
 [dependencies]
-confi = "0.1.4"
+confi = "0.2"
 num-traits = "0.2.19"
-statrs = "0.18.0"
 thiserror = "2.0.7"
 tracing = "0.1.41"
 trellis-runner = "0.1.4"
@@ -21,4 +20,5 @@ argmin = "0.10.0"
 argmin-observer-slog = "0.1.0"
 rand = "0.8.5"
 rand_isaac = "0.3.0"
+proptest = "1.9.0"
 tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
