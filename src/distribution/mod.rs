@@ -13,7 +13,7 @@ pub enum PosteriorError<T> {
     InvalidDomain,
     #[error("trying to insert a sample point which is too close to points already in the domain.")]
     InsertionPointTooClose,
-    #[error("the provided point {0} is outside the domain.")]
+    #[error("the provided point {0:?} is outside the domain.")]
     PointOutsideDomain(T),
     #[error("invalid state: {0}")]
     ValidationError(#[from] PosteriorValidationError<T>),
@@ -30,12 +30,17 @@ pub enum PosteriorError<T> {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum PosteriorValidationError<T> {
+    #[error("knots not ordered")]
     KnotsNotSorted,
+    #[error("inconsistent log_interval_mass length. expected {expected}, found {actual}")]
     IntervalCountMismatch { expected: usize, actual: usize },
+    #[error("non-finite log mass")]
     InvalidLogMass,
+    #[error("invalid probability value {0:?}")]
     InvalidProbability(T),
+    #[error("invalid simplex. found {sum:?}, expected {expected:?} (tol = {tol:?})")]
     SimplexInvalid { sum: T, expected: T, tol: T },
 }
 
@@ -116,6 +121,23 @@ impl<T> PosteriorDistribution<T> {
         };
 
         Ok(result)
+    }
+
+    pub fn log_interval_density(&self, i: usize) -> T
+    where
+        T: Float,
+    {
+        let width = self.knots[i + 1] - self.knots[i];
+        self.log_interval_mass[i] - width.ln()
+    }
+
+    pub fn max_log_interval_density(&self) -> T
+    where
+        T: Float,
+    {
+        (0..self.log_interval_mass.len())
+            .map(|i| self.log_interval_density(i))
+            .fold(T::neg_infinity(), T::max)
     }
 
     // An iterator over the interval mass of the distribution

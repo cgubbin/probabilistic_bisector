@@ -1,5 +1,5 @@
 use super::{ObservationLocation, PosteriorDistribution, PosteriorError};
-use crate::Sign;
+use crate::RootSide;
 
 use confi::ConfidenceLevel;
 use num_traits::{Float, FromPrimitive};
@@ -40,7 +40,7 @@ impl<T> PosteriorDistribution<T> {
     ///
     /// The observation consists of:
     /// - a query location `x`
-    /// - a directional sign (`Sign::Positive` or `Sign::Negative`)
+    /// - a directional sign (`RootSide::Left` or `RootSide::Right`)
     /// - a confidence level in the correctness of the sign
     ///
     /// ## Semantics
@@ -76,20 +76,25 @@ impl<T> PosteriorDistribution<T> {
     pub fn observe(
         &mut self,
         x: T,
-        direction: Sign,
+        direction: RootSide,
         confidence: ConfidenceLevel<T>,
     ) -> Result<(), PosteriorError<T>>
     where
         T: Float + FromPrimitive + std::ops::AddAssign + std::iter::Sum<T>,
     {
         match self.locate(x) {
-            Ok(ObservationLocation::Boundary) => return Ok(()),
+            Ok(ObservationLocation::Boundary) => {
+                tracing::info!("knot at boundary");
+                return Ok(());
+            }
 
             Ok(ObservationLocation::ExistingKnot(i)) => {
+                tracing::info!("knot exists at index {}", i);
                 self.update_at_index(i, direction, confidence);
             }
 
             Ok(ObservationLocation::Interior(i)) => {
+                tracing::info!("nearest knot at index {}", i);
                 self.update_at_index(i + 1, direction, confidence);
                 self.insert_knot_in_interval(x, i)?;
             }
@@ -103,15 +108,15 @@ impl<T> PosteriorDistribution<T> {
         Ok(())
     }
 
-    fn update_at_index(&mut self, index: usize, direction: Sign, confidence: ConfidenceLevel<T>)
+    fn update_at_index(&mut self, index: usize, direction: RootSide, confidence: ConfidenceLevel<T>)
     where
         T: Float + FromPrimitive + std::ops::AddAssign,
     {
         let confidence = confidence.into_inner();
 
         let dir = match direction {
-            Sign::Positive => T::one(),
-            Sign::Negative => -T::one(),
+            RootSide::Right => T::one(),
+            RootSide::Left => -T::one(),
         };
 
         let (left_factor, right_factor) = compute_update_factors(dir, confidence);
@@ -287,7 +292,7 @@ mod tests {
     fn knots_and_intervals_remain_consistent() {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 10).unwrap();
 
-        dist.observe(0.5, Sign::Positive, ConfidenceLevel::<f64>::CL95)
+        dist.observe(0.5, RootSide::Right, ConfidenceLevel::<f64>::CL95)
             .unwrap();
 
         assert_eq!(dist.knots.len(), dist.log_interval_mass.len() + 1);
@@ -297,7 +302,7 @@ mod tests {
     fn knots_remain_sorted() {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 10).unwrap();
 
-        let dir = Sign::Positive;
+        let dir = RootSide::Right;
         let conf = ConfidenceLevel::<f64>::CL95;
 
         dist.observe(0.7, dir, conf).unwrap();
@@ -311,7 +316,7 @@ mod tests {
     fn probability_mass_is_preserved() {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 10).unwrap();
 
-        let dir = Sign::Positive;
+        let dir = RootSide::Right;
         let conf = ConfidenceLevel::<f64>::CL95;
 
         for x in [0.1, 0.4, 0.6, 0.9] {
@@ -328,7 +333,7 @@ mod tests {
 
         let before = dist.cumulative_mass(0.5);
 
-        dist.observe(0.3, Sign::Negative, ConfidenceLevel::<f64>::CL95)
+        dist.observe(0.3, RootSide::Left, ConfidenceLevel::<f64>::CL95)
             .unwrap();
 
         let after = dist.cumulative_mass(0.5);
@@ -340,7 +345,7 @@ mod tests {
     fn distribution_does_not_collapse() {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 10).unwrap();
 
-        let dir = Sign::Positive;
+        let dir = RootSide::Right;
         let conf = ConfidenceLevel::<f64>::CL95;
 
         for _ in 0..20 {
@@ -363,7 +368,7 @@ mod tests {
             for x in ops {
                 dist.observe(
                     x,
-                    Sign::Positive,
+                    RootSide::Right,
                     ConfidenceLevel::new(0.7).unwrap(),
                 ).unwrap();
             }
@@ -380,7 +385,7 @@ mod tests {
             for x in ops {
                 dist.observe(
                     x,
-                    Sign::Positive,
+                    RootSide::Right,
                     ConfidenceLevel::new(0.7).unwrap(),
                 ).unwrap();
             }
@@ -398,7 +403,7 @@ mod tests {
             for x in xs {
                 let _ = dist.observe(
                     x,
-                    Sign::Positive,
+                    RootSide::Right,
                     ConfidenceLevel::new(0.8).unwrap()
                 ).unwrap();
             }
@@ -412,7 +417,7 @@ mod tests {
 
         for i in 1..10 {
             let x = i as f64 / 10.0;
-            dist.observe(x, Sign::Positive, ConfidenceLevel::new(0.7).unwrap())
+            dist.observe(x, RootSide::Right, ConfidenceLevel::new(0.7).unwrap())
                 .unwrap();
         }
 
@@ -428,7 +433,7 @@ mod tests {
         let inputs = vec![0.1, 0.7, 0.3, 0.9, 0.5];
 
         for x in inputs {
-            dist.observe(x, Sign::Positive, ConfidenceLevel::new(0.7).unwrap())
+            dist.observe(x, RootSide::Right, ConfidenceLevel::new(0.7).unwrap())
                 .unwrap();
         }
     }
@@ -438,7 +443,7 @@ mod tests {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 50).unwrap();
 
         for _ in 0..20 {
-            dist.observe(0.5, Sign::Positive, ConfidenceLevel::new(0.7).unwrap())
+            dist.observe(0.5, RootSide::Right, ConfidenceLevel::new(0.7).unwrap())
                 .unwrap();
         }
     }
@@ -450,7 +455,7 @@ mod tests {
         let before_knots = dist.knots.clone();
         let before_mass = dist.log_interval_mass.clone();
 
-        dist.observe(0.0, Sign::Positive, ConfidenceLevel::new(0.7).unwrap())
+        dist.observe(0.0, RootSide::Right, ConfidenceLevel::new(0.7).unwrap())
             .unwrap();
 
         assert_eq!(before_knots, dist.knots);
@@ -461,7 +466,7 @@ mod tests {
     fn refinement_preserves_alignment() {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 10).unwrap();
 
-        dist.observe(0.37, Sign::Negative, ConfidenceLevel::new(0.8).unwrap())
+        dist.observe(0.37, RootSide::Left, ConfidenceLevel::new(0.8).unwrap())
             .unwrap();
 
         assert!(dist.knots.windows(2).all(|w| w[0] < w[1]));
@@ -473,7 +478,7 @@ mod tests {
         let mut dist = PosteriorDistribution::new(0.0, 1.0, 50).unwrap();
 
         for x in [0.1, 0.8, 0.3, 0.6] {
-            dist.observe(x, Sign::Positive, ConfidenceLevel::new(0.7).unwrap())
+            dist.observe(x, RootSide::Right, ConfidenceLevel::new(0.7).unwrap())
                 .unwrap();
         }
 
@@ -489,7 +494,7 @@ mod tests {
         for i in 0..200 {
             let x = (i as f64 % 100.0) / 100.0;
 
-            dist.observe(x, Sign::Positive, ConfidenceLevel::new(0.6).unwrap())
+            dist.observe(x, RootSide::Right, ConfidenceLevel::new(0.6).unwrap())
                 .unwrap();
 
             let sum: f64 = dist.log_interval_mass.iter().map(|v| v.exp()).sum();

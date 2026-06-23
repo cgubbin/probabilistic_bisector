@@ -47,7 +47,8 @@
 //!
 //! This ensures invariants are enforced structurally, not procedurally.
 use num_traits::Float;
-///
+use std::ops::Range;
+
 /// A meet-semilattice defines a structure where elements can only
 /// be refined by intersection.
 ///
@@ -72,6 +73,7 @@ pub(crate) trait MeetSemiLattice: Sized {
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum SemiMeetError<T> {
+    #[error("meet failure between {left:?} and {right:?}")]
     MeetFailure {
         left: Interval<T>,
         right: Interval<T>,
@@ -96,6 +98,15 @@ pub(crate) enum SemiMeetError<T> {
 pub struct Interval<T> {
     pub lower: T,
     pub upper: T,
+}
+
+impl<T> Interval<T> {
+    pub(crate) fn width(&self) -> T
+    where
+        T: Float,
+    {
+        self.upper - self.lower
+    }
 }
 
 impl<T> MeetSemiLattice for Interval<T>
@@ -137,6 +148,78 @@ where
 #[derive(Clone, Debug)]
 pub struct SequentialInterval<T> {
     pub current: Interval<T>,
+}
+
+impl<T> SequentialInterval<T> {
+    pub(crate) fn instantiate(domain: Range<T>) -> SequentialInterval<T>
+    where
+        T: Float,
+    {
+        if domain.start.is_nan() || domain.end.is_nan() {
+            panic!("domain contained NaN");
+        }
+
+        if domain.start >= domain.end {
+            panic!("ill-defined domain");
+        }
+
+        Self {
+            current: Interval {
+                lower: domain.start,
+                upper: domain.end,
+            },
+        }
+    }
+
+    pub(crate) fn width(&self) -> T
+    where
+        T: Float,
+    {
+        self.current.upper - self.current.lower
+    }
+
+    pub(crate) fn lower(&self) -> T
+    where
+        T: Copy,
+    {
+        self.current.lower
+    }
+
+    pub(crate) fn upper(&self) -> T
+    where
+        T: Copy,
+    {
+        self.current.upper
+    }
+
+    pub fn try_meet(self, other: Interval<T>) -> Result<Self, SemiMeetError<T>>
+    where
+        T: Float,
+    {
+        let lower = self.current.lower.max(other.lower);
+        let upper = self.current.upper.min(other.upper);
+
+        if lower > upper {
+            return Err(SemiMeetError::MeetFailure {
+                left: self.current,
+                right: other,
+            });
+        }
+
+        Ok(Self {
+            current: Interval { lower, upper },
+        })
+    }
+
+    pub fn meet_or_keep(self, other: Interval<T>) -> (Self, bool)
+    where
+        T: Float,
+    {
+        match self.clone().try_meet(other) {
+            Ok(next) => (next, true),
+            Err(_) => (self, false),
+        }
+    }
 }
 
 impl<T> MeetSemiLattice for SequentialInterval<T>

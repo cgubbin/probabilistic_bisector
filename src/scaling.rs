@@ -47,8 +47,7 @@ use std::ops::Range;
 pub(crate) enum ScalerError<T> {
     #[error("invalid domain used to construct scalar: {0:?}")]
     InvalidDomain(Range<T>),
-
-    #[error("invalid value: {value}, not in {range}")]
+    #[error("invalid value: {value:?}, not in {range:?}")]
     InvalidValue { value: T, range: Range<T> },
 }
 

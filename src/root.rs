@@ -35,7 +35,7 @@
 //! ## Example
 //!
 //! ```
-//! use probabilistic_bisector::{RootOracle, Sign, ConfidenceLevel};
+//! use probabilistic_bisector::{RootOracle, ObjectiveSign, ConfidenceLevel};
 //!
 //! struct Linear;
 //!
@@ -46,12 +46,12 @@
 //! }
 //!
 //! let confidence_level = ConfidenceLevel::<f64>::CL95;
-//! let negative_sign = Linear.sign(-1.0, confidence_level, 100)?;
-//! assert_eq!(negative_sign, Sign::Negative);
-//! let positive_sign = Linear.sign(1.0, confidence_level, 100)?;
-//! assert_eq!(positive_sign, Sign::Positive);
+//! let negative_sign = Linear.objective_sign(-1.0, confidence_level, 100)?;
+//! assert_eq!(negative_sign, Some(ObjectiveSign::Negative));
+//! let positive_sign = Linear.objective_sign(1.0, confidence_level, 100)?;
+//! assert_eq!(positive_sign, Some(ObjectiveSign::Positive));
 //! let slope_sign = Linear.slope_sign(&(-1.0..1.0), confidence_level, 100)?;
-//! assert_eq!(slope_sign, Sign::Positive);
+//! assert_eq!(slope_sign, Some(ObjectiveSign::Positive));
 //! # Ok::<_, probabilistic_bisector::RootError>(())
 //!
 //! ```
@@ -69,31 +69,29 @@ pub enum RootError {
     NoRootDetected,
 }
 
-// Representing the sign of a number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Sign {
+pub enum ObjectiveSign {
     Positive,
     Negative,
 }
 
-impl Sign {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootSide {
+    Left,
+    Right,
+}
+
+impl ObjectiveSign {
     // Try to construct a sign
     fn try_from<T: Float>(x: T) -> Result<Option<Self>, RootError> {
         let sign = x.signum();
 
         if sign == T::one() {
-            Ok(Some(Sign::Positive))
+            Ok(Some(ObjectiveSign::Positive))
         } else if sign == -T::one() {
-            Ok(Some(Sign::Negative))
+            Ok(Some(ObjectiveSign::Negative))
         } else {
             return Err(RootError::NaN);
-        }
-    }
-
-    fn signum<T: Float>(&self) -> T {
-        match self {
-            Sign::Positive => T::one(),
-            Sign::Negative => T::one().neg(),
         }
     }
 }
@@ -107,6 +105,15 @@ pub trait RootOracle<T: Float + FromPrimitive + fmt::Debug> {
     /// through its sign by [`RootOracle::sign`].
     fn evaluate(&mut self, x: T) -> T;
 
+    fn root_side(&self, objective_sign: ObjectiveSign, slope_sign: ObjectiveSign) -> RootSide {
+        match (objective_sign, slope_sign) {
+            (ObjectiveSign::Positive, ObjectiveSign::Positive) => RootSide::Left,
+            (ObjectiveSign::Negative, ObjectiveSign::Positive) => RootSide::Right,
+            (ObjectiveSign::Positive, ObjectiveSign::Negative) => RootSide::Right,
+            (ObjectiveSign::Negative, ObjectiveSign::Negative) => RootSide::Left,
+        }
+    }
+
     // The sign of the slope of the function over the domain
     //
     // It is a necessary condition that the function has a root within the domain. This means it is
@@ -118,14 +125,24 @@ pub trait RootOracle<T: Float + FromPrimitive + fmt::Debug> {
         domain: &Range<T>,
         confidence_level: ConfidenceLevel<T>,
         max_iter: usize,
-    ) -> Result<Sign, RootError> {
-        let sign_start = self.sign(domain.start, confidence_level, max_iter)?;
-        let sign_end = self.sign(domain.end, confidence_level, max_iter)?;
+    ) -> Result<Option<ObjectiveSign>, RootError> {
+        let sign_start = self.objective_sign(domain.start, confidence_level, max_iter)?;
+        let sign_end = self.objective_sign(domain.end, confidence_level, max_iter)?;
+
+        tracing::info!("start: {sign_start:?}, end: {sign_end:?}");
 
         match (sign_start, sign_end) {
-            (Sign::Positive, Sign::Negative) => Ok(Sign::Negative),
-            (Sign::Negative, Sign::Positive) => Ok(Sign::Positive),
-            _ => Err(RootError::NoRootDetected),
+            (Some(ObjectiveSign::Positive), Some(ObjectiveSign::Negative)) => {
+                Ok(Some(ObjectiveSign::Negative))
+            }
+            (Some(ObjectiveSign::Negative), Some(ObjectiveSign::Positive)) => {
+                Ok(Some(ObjectiveSign::Positive))
+            }
+            (Some(ObjectiveSign::Positive), Some(ObjectiveSign::Positive))
+            | (Some(ObjectiveSign::Negative), Some(ObjectiveSign::Negative)) => {
+                Err(RootError::NoRootDetected)
+            }
+            _ => Ok(None),
         }
     }
 
@@ -142,12 +159,12 @@ pub trait RootOracle<T: Float + FromPrimitive + fmt::Debug> {
     /// Exact zero observations are treated as non-informative and do not
     /// contribute to the random walk.
     #[tracing::instrument(ret, level = tracing::Level::DEBUG, skip(self))]
-    fn sign(
+    fn objective_sign(
         &mut self,
         x: T,
         confidence_level: ConfidenceLevel<T>,
         max_iter: usize,
-    ) -> Result<Sign, RootError> {
+    ) -> Result<Option<ObjectiveSign>, RootError> {
         let mut random_walk = T::zero();
         let alpha = confidence_level.significance().into_inner();
         let two = T::one() + T::one();
@@ -173,7 +190,7 @@ pub trait RootOracle<T: Float + FromPrimitive + fmt::Debug> {
                 // Random walk cannot be NaN, as an error would have been returned. It must be
                 // greater than zero as power_test is a positive number. Therefore the unwrap is
                 // safe
-                return Sign::try_from(random_walk).map(|sign| sign.unwrap());
+                return ObjectiveSign::try_from(random_walk);
             }
         }
 
@@ -222,10 +239,11 @@ mod tests {
         let mut f = Constant(1.0);
 
         let sign = f
-            .sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 100)
+            .objective_sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 100)
+            .unwrap()
             .unwrap();
 
-        assert_eq!(sign, Sign::Positive);
+        assert_eq!(sign, ObjectiveSign::Positive);
     }
 
     #[test]
@@ -233,10 +251,11 @@ mod tests {
         let mut f = Constant(-1.0);
 
         let sign = f
-            .sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 100)
+            .objective_sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 100)
+            .unwrap()
             .unwrap();
 
-        assert_eq!(sign, Sign::Negative);
+        assert_eq!(sign, ObjectiveSign::Negative);
     }
 
     #[test]
@@ -244,7 +263,7 @@ mod tests {
         let mut f = NanObjective;
 
         let err = f
-            .sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 100)
+            .objective_sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 100)
             .unwrap_err();
 
         assert!(matches!(err, RootError::NaN));
@@ -255,7 +274,7 @@ mod tests {
         let mut f = ZeroObjective;
 
         let err = f
-            .sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 10)
+            .objective_sign(0.0, ConfidenceLevel::new(0.8).unwrap(), 10)
             .unwrap_err();
 
         assert!(matches!(err, RootError::MaxIterExceeded(10)));
@@ -266,7 +285,7 @@ mod tests {
         let mut f = Constant(1.0);
 
         let err = f
-            .sign(0.0, ConfidenceLevel::new(0.99).unwrap(), 1)
+            .objective_sign(0.0, ConfidenceLevel::new(0.99).unwrap(), 1)
             .unwrap_err();
 
         assert!(matches!(err, RootError::MaxIterExceeded(1)));
@@ -278,9 +297,10 @@ mod tests {
 
         let slope = f
             .slope_sign(&(-1.0..1.0), ConfidenceLevel::new(0.8).unwrap(), 100)
+            .unwrap()
             .unwrap();
 
-        assert_eq!(slope, Sign::Positive);
+        assert_eq!(slope, ObjectiveSign::Positive);
     }
 
     #[test]
@@ -297,9 +317,10 @@ mod tests {
 
         let slope = f
             .slope_sign(&(-1.0..1.0), ConfidenceLevel::new(0.8).unwrap(), 100)
+            .unwrap()
             .unwrap();
 
-        assert_eq!(slope, Sign::Negative);
+        assert_eq!(slope, ObjectiveSign::Negative);
     }
 
     #[test]

@@ -61,6 +61,34 @@ impl<T> SupportSet<T>
 where
     T: Float + FromPrimitive,
 {
+    /// Create a new support set from a posterior distribution
+    pub(crate) fn new(posterior: &PosteriorDistribution<T>) -> Self {
+        let mut support_set = SupportSet {
+            active_intervals: vec![],
+        };
+        support_set.recompute(posterior);
+        support_set
+    }
+
+    pub fn contains(&self, x: T) -> bool {
+        self.active_intervals
+            .iter()
+            .any(|interval| interval.lower <= x && x <= interval.upper)
+    }
+
+    pub fn widest_interval_midpoint(&self) -> Option<T> {
+        let two = T::one() + T::one();
+
+        self.active_intervals
+            .iter()
+            .max_by(|a, b| {
+                let wa = a.upper - a.lower;
+                let wb = b.upper - b.lower;
+                wa.partial_cmp(&wb).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|interval| (interval.lower + interval.upper) / two)
+    }
+
     /// Recomputes the support from the posterior distribution.
     ///
     /// # Algorithm
@@ -79,7 +107,7 @@ where
     /// # Numerical considerations
     ///
     /// Operates in log-space to prevent underflow in probability mass.
-    pub fn recompute(&mut self, posterior: &PosteriorDistribution<T>) {
+    pub(crate) fn recompute(&mut self, posterior: &PosteriorDistribution<T>) {
         let eps = T::from_f64(1e-12).unwrap();
         let log_eps = eps.ln();
 

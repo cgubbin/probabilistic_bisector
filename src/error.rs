@@ -1,4 +1,4 @@
-use crate::{PosteriorError, ScalerError};
+use crate::{BisectionError, PosteriorError, RootError, ScalerError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum PBError<T> {
@@ -6,8 +6,19 @@ pub enum PBError<T> {
     Scaler(#[from] ScalerError<T>),
     #[error("error in distribution computation: {0}")]
     Posterior(#[from] PosteriorError<T>),
-    #[error("failed to determine the function sign at {0} in less than {1} iterations")]
-    SignDetermination(T, usize),
+    #[error("failed to determine the function sign at {x} in less than  iterations")]
+    IndeterminateSign { x: T },
+    #[error("failed to determine the function slope at {x} in less than  iterations")]
+    IndeterminateSlope { x: T },
+    #[error("error in bisection: {0}")]
+    Bisection(#[from] BisectionError<T>),
+    #[error("error in oracle: {0}")]
+    Oracle(#[from] RootError),
     #[error("in computing the slope of the function, no root was detected in the domain")]
     NoRootDetected,
+
+    #[error(
+        "any other variant, wrapped in a box: this is because trellis only returns boxed errors...: {0:?}"
+    )]
+    Wrapped(Box<dyn std::error::Error + 'static + Send + Sync>),
 }
