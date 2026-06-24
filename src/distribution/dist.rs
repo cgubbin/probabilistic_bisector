@@ -29,12 +29,13 @@ impl<T> PosteriorDistribution<T> {
     /// ## Complexity
     ///
     /// O(n) unless interval indexing is optimized
+    #[allow(dead_code)]
     pub fn cumulative_mass(&self, x: T) -> T
     where
         T: Float,
     {
-        let first = self.knots[0];
-        let last = self.knots[self.knots.len() - 1];
+        let _first = self.knots[0];
+        let _last = self.knots[self.knots.len() - 1];
 
         match self.locate(x) {
             Ok(ObservationLocation::Boundary) => unreachable!("interior bounds already checked"),

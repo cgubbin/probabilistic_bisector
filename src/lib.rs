@@ -152,10 +152,10 @@
 mod distribution;
 mod error;
 mod evolution;
+pub(crate) mod intervals;
 mod result;
 mod root;
 mod scaling;
-pub(crate) mod semimeet;
 mod solver;
 pub(crate) mod support;
 
@@ -164,13 +164,12 @@ use evolution::InferenceState;
 pub use confi::ConfidenceLevel;
 pub use root::{ObjectiveSign, RootError, RootOracle, RootSide};
 
-use confi::SignificanceLevel;
-use distribution::{PosteriorDistribution, PosteriorError, PosteriorValidationError};
+use distribution::{PosteriorDistribution, PosteriorError};
 pub use error::PBError;
 pub(crate) use evolution::BisectionError;
 
+use intervals::{Interval, IntervalError, MeetError, SequentialInterval};
 use scaling::{Scaler, ScalerError};
-use semimeet::{Interval, MeetSemiLattice, SemiMeetError, SequentialInterval};
 use support::SupportSet;
 
 use solver::RootFinder;
@@ -180,7 +179,7 @@ pub use result::{ProbabilisticBisectionError, ProbabilisticBisectionResult, Solv
 use num_traits::{Float, FromPrimitive};
 use std::ops::Range;
 use trellis_runner::{
-    EngineOutput, GenerateBuilderFallible, MaxIterationPolicy, TargetValuePolicy, TrellisFloat,
+    GenerateBuilderFallible, MaxIterationPolicy, TargetValuePolicy, TrellisFloat,
 };
 
 pub struct BisectorConfig<T> {
@@ -191,6 +190,7 @@ pub struct BisectorConfig<T> {
     pub tolerance_window: usize,
 }
 
+#[allow(clippy::result_large_err)]
 pub fn run<T, P>(
     domain: Range<T>,
     confidence_level: ConfidenceLevel<T>,
@@ -215,7 +215,7 @@ where
     )?;
     let state = InferenceState::new(root_finder.scaled_domain().clone(), config.max_knots)?;
 
-    let tolerance_window = 10;
+    let _tolerance_window = 10;
     let engine = <RootFinder<T> as GenerateBuilderFallible>::build_for(root_finder, problem)
         .and_policy(MaxIterationPolicy::new(config.max_observations))
         .and_policy(TargetValuePolicy::new(

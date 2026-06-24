@@ -1,6 +1,6 @@
 use crate::{
-    Interval, MeetSemiLattice, ObjectiveSign, PBError, PosteriorDistribution, PosteriorError,
-    RootSide, SemiMeetError, SequentialInterval, SupportSet,
+    Interval, IntervalError, MeetError, ObjectiveSign, PBError, PosteriorDistribution,
+    PosteriorError, RootSide, SequentialInterval, SupportSet,
 };
 
 use confi::ConfidenceLevel;
@@ -10,9 +10,11 @@ use std::ops::Range;
 #[derive(thiserror::Error, Debug)]
 pub enum BisectionError<T> {
     #[error("Semi meet error: {0}")]
-    SemiMeet(#[from] SemiMeetError<T>),
+    Meet(#[from] MeetError<T>),
     #[error("Posterior error: {0}")]
     Posterior(#[from] PosteriorError<T>),
+    #[error("Interval error: {0}")]
+    Interval(#[from] IntervalError<T>),
     #[error("Empty hull...")]
     EmptyHull,
 }
@@ -41,7 +43,7 @@ impl<T> InferenceState<T> {
         T: Float + FromPrimitive,
     {
         let posterior = PosteriorDistribution::new(domain.start, domain.end, max_knots)?;
-        let support = SupportSet::new(&posterior);
+        let support = SupportSet::new(&posterior)?;
         Ok(Self {
             iter: 0,
             sign_indeterminate: false,
@@ -128,14 +130,14 @@ impl<T> InferenceState<T> {
         // 2. Support projection (filter lattice)
         // -----------------------------
         tracing::debug!("recomputing support");
-        self.support.recompute(&self.posterior);
+        self.support.recompute(&self.posterior)?;
 
         // -----------------------------
         // 3. Confidence update (meet-semilattice contraction)
         // -----------------------------
         let candidate = compute_snapshot(&self.posterior, conf, self.iter)?;
 
-        let candidate_interval = SequentialInterval { current: candidate };
+        let _candidate_interval = SequentialInterval { current: candidate };
 
         let (next_confidence, met) = self.confidence.clone().meet_or_keep(candidate);
         self.confidence = next_confidence;
@@ -196,10 +198,7 @@ where
     let start = *g.first().ok_or(BisectionError::EmptyHull)?;
     let end = *g.last().ok_or(BisectionError::EmptyHull)?;
 
-    let candidate = Interval {
-        lower: posterior.knots[start],
-        upper: posterior.knots[end + 1],
-    };
+    let candidate = Interval::new(posterior.knots[start], posterior.knots[end + 1])?;
 
     Ok(candidate)
 }

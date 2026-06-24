@@ -91,20 +91,6 @@ fn works_on_log_scaled_positive_domain() {
     assert!(interval.upper() >= root);
 }
 
-struct NoisyLinear {
-    root: f64,
-    noise: Vec<f64>,
-    index: usize,
-}
-
-impl RootOracle<f64> for NoisyLinear {
-    fn evaluate(&mut self, x: f64) -> f64 {
-        let eps = self.noise[self.index % self.noise.len()];
-        self.index += 1;
-        x - self.root + eps
-    }
-}
-
 struct NoRoot;
 
 impl RootOracle<f64> for NoRoot {
@@ -126,6 +112,4 @@ fn reports_no_root_when_domain_does_not_bracket_root() {
     let result = run(0.0..1.0, ConfidenceLevel::new(0.8).unwrap(), NoRoot, config);
 
     assert!(result.is_err());
-
-    let err = result.unwrap_err();
 }

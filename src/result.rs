@@ -1,7 +1,6 @@
-use std::time::Duration;
-use trellis_runner::{RunSummary, State, Termination};
+use trellis_runner::{RunSummary, Termination};
 
-use crate::{InferenceState, PBError, semimeet::Interval};
+use crate::{InferenceState, Interval, PBError};
 
 #[derive(Clone, Debug)]
 pub struct ProbabilisticBisectionResult<T> {

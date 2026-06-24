@@ -1,4 +1,4 @@
-use crate::{BisectionError, PosteriorError, RootError, ScalerError};
+use crate::{BisectionError, IntervalError, PosteriorError, RootError, ScalerError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum PBError<T> {
@@ -12,6 +12,9 @@ pub enum PBError<T> {
     IndeterminateSlope { x: T },
     #[error("error in bisection: {0}")]
     Bisection(#[from] BisectionError<T>),
+
+    #[error("error in interval: {0}")]
+    Interval(#[from] IntervalError<T>),
     #[error("error in oracle: {0}")]
     Oracle(#[from] RootError),
     #[error("in computing the slope of the function, no root was detected in the domain")]

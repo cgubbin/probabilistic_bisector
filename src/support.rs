@@ -40,7 +40,7 @@
 //!
 //! It is recomputed from the posterior at each inference step
 //! to avoid drift and accumulation of numerical error.
-use crate::{Interval, PosteriorDistribution};
+use crate::{Interval, IntervalError, PosteriorDistribution};
 
 use num_traits::{Float, FromPrimitive};
 
@@ -62,18 +62,18 @@ where
     T: Float + FromPrimitive,
 {
     /// Create a new support set from a posterior distribution
-    pub(crate) fn new(posterior: &PosteriorDistribution<T>) -> Self {
+    pub(crate) fn new(posterior: &PosteriorDistribution<T>) -> Result<Self, IntervalError<T>> {
         let mut support_set = SupportSet {
             active_intervals: vec![],
         };
-        support_set.recompute(posterior);
-        support_set
+        support_set.recompute(posterior)?;
+        Ok(support_set)
     }
 
     pub fn contains(&self, x: T) -> bool {
         self.active_intervals
             .iter()
-            .any(|interval| interval.lower <= x && x <= interval.upper)
+            .any(|interval| interval.lower() <= x && x <= interval.upper())
     }
 
     pub fn widest_interval_midpoint(&self) -> Option<T> {
@@ -82,11 +82,11 @@ where
         self.active_intervals
             .iter()
             .max_by(|a, b| {
-                let wa = a.upper - a.lower;
-                let wb = b.upper - b.lower;
+                let wa = a.upper() - a.lower();
+                let wb = b.upper() - b.lower();
                 wa.partial_cmp(&wb).unwrap_or(std::cmp::Ordering::Equal)
             })
-            .map(|interval| (interval.lower + interval.upper) / two)
+            .map(|interval| (interval.lower() + interval.upper()) / two)
     }
 
     /// Recomputes the support from the posterior distribution.
@@ -107,7 +107,10 @@ where
     /// # Numerical considerations
     ///
     /// Operates in log-space to prevent underflow in probability mass.
-    pub(crate) fn recompute(&mut self, posterior: &PosteriorDistribution<T>) {
+    pub(crate) fn recompute(
+        &mut self,
+        posterior: &PosteriorDistribution<T>,
+    ) -> Result<(), IntervalError<T>> {
         let eps = T::from_f64(1e-12).unwrap();
         let log_eps = eps.ln();
 
@@ -127,13 +130,14 @@ where
 
                 let end = i - 1;
 
-                self.active_intervals.push(Interval {
-                    lower: posterior.knots[start],
-                    upper: posterior.knots[end + 1],
-                });
+                self.active_intervals.push(Interval::new(
+                    posterior.knots[start],
+                    posterior.knots[end + 1],
+                )?);
             } else {
                 i += 1;
             }
         }
+        Ok(())
     }
 }

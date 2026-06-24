@@ -4,21 +4,9 @@ use crate::RootSide;
 use confi::ConfidenceLevel;
 use num_traits::{Float, FromPrimitive};
 
-use std::fmt;
-
 const DEFAULT_SIMPLEX_TOL: f64 = 1e-10;
 
-#[derive(Debug)]
-struct InsertionEvent<T> {
-    index: usize,
-    x: T,
-    split_mass_log: T,
-}
-
-fn compute_update_factors<T: Float>(direction: T, confidence: T) -> (T, T)
-where
-    T: Float,
-{
+fn compute_update_factors<T: Float>(direction: T, confidence: T) -> (T, T) {
     let two = T::one() + T::one();
 
     let delta = if direction >= T::zero() {
@@ -198,14 +186,15 @@ impl<T> PosteriorDistribution<T> {
     /// ```text
     /// log P_left = log P_right = log P_i - ln 2
     /// ```
-    fn insert_knot_in_interval(
-        &mut self,
-        x: T,
-        interval: usize,
-    ) -> Result<InsertionEvent<T>, PosteriorError<T>>
+    fn insert_knot_in_interval(&mut self, x: T, interval: usize) -> Result<(), PosteriorError<T>>
     where
         T: Float + FromPrimitive,
     {
+        if self.knots.len() >= self.max_knots {
+            return Err(PosteriorError::TooManyKnots {
+                max_knots: self.max_knots,
+            });
+        }
         if interval >= self.log_interval_mass.len() {
             return Err(PosteriorError::InvalidIntervalIndex(interval));
         }
@@ -249,11 +238,7 @@ impl<T> PosteriorDistribution<T> {
         self.log_interval_mass[interval] = child_log_mass;
         self.log_interval_mass.insert(interval + 1, child_log_mass);
 
-        Ok(InsertionEvent {
-            index: interval + 1,
-            x,
-            split_mass_log: parent_log_mass,
-        })
+        Ok(())
     }
 
     fn renormalize(&mut self)
@@ -322,7 +307,7 @@ mod tests {
         for x in [0.1, 0.4, 0.6, 0.9] {
             dist.observe(x, dir, conf).unwrap();
 
-            let sum: f64 = dist.interval_mass().sum();
+            let sum: f64 = dist.log_interval_mass.iter().map(|each| each.exp()).sum();
             assert!((sum - 1.0).abs() < 1e-6);
         }
     }
@@ -353,7 +338,12 @@ mod tests {
         }
 
         assert!(dist.knots.len() > 2);
-        assert!(dist.interval_mass().all(|p| p > 0.0));
+        assert!(
+            dist.log_interval_mass
+                .iter()
+                .map(|each| each.exp())
+                .all(|p| p > 0.0)
+        );
     }
 
     use proptest::prelude::*;
@@ -363,7 +353,7 @@ mod tests {
         fn posterior_stays_valid_under_random_observations(
             ops in proptest::collection::vec(0f64..1f64, 1..100)
         ) {
-            let mut dist = PosteriorDistribution::new(0.0, 1.0, 100).unwrap();
+            let mut dist = PosteriorDistribution::new(0.0, 1.0, 1000).unwrap();
 
             for x in ops {
                 dist.observe(
@@ -489,7 +479,7 @@ mod tests {
 
     #[test]
     fn no_probability_mass_drift_over_time() {
-        let mut dist = PosteriorDistribution::new(0.0, 1.0, 50).unwrap();
+        let mut dist = PosteriorDistribution::new(0.0, 1.0, 500).unwrap();
 
         for i in 0..200 {
             let x = (i as f64 % 100.0) / 100.0;

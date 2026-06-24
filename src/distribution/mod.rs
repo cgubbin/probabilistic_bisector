@@ -1,14 +1,14 @@
 mod dist;
 mod update;
 
-use crate::Interval;
-
-use num_traits::{Float, FromPrimitive};
+use num_traits::Float;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PosteriorError<T> {
     #[error("posterior distributions must contain at least 2 knots.")]
     TooFewknots,
+    #[error("posterior distributions can only contain {max_knots} knots")]
+    TooManyKnots { max_knots: usize },
     #[error("the provided domain must have finite range.")]
     InvalidDomain,
     #[error("trying to insert a sample point which is too close to points already in the domain.")]
@@ -104,7 +104,7 @@ impl<T> PosteriorDistribution<T> {
         if (lower >= upper) || lower.is_nan() || upper.is_nan() {
             return Err(PosteriorError::InvalidDomain);
         }
-        let mut result = Self {
+        let result = Self {
             max_knots,
             knots: {
                 let mut knots = Vec::with_capacity(max_knots);
@@ -140,36 +140,6 @@ impl<T> PosteriorDistribution<T> {
             .fold(T::neg_infinity(), T::max)
     }
 
-    // An iterator over the interval mass of the distribution
-    //
-    // The interval mass is the exponential of the stored logarithmic mass
-    pub(super) fn interval_mass(&self) -> impl Iterator<Item = T> + '_
-    where
-        T: Float,
-    {
-        self.log_interval_mass.iter().map(|x| x.exp())
-    }
-
-    /// Returns the probability contained in each interval.
-    ///
-    /// Interval `i` corresponds to
-    /// `[knots[i], knots[i + 1])`.
-    ///
-    /// The probability contained in each bin is the interval mass, multiplied by the width o fthe
-    /// bin
-    pub(super) fn bin_probabilities(&self) -> impl Iterator<Item = T> + '_
-    where
-        T: Float,
-    {
-        self.knots
-            .windows(2)
-            .zip(self.interval_mass())
-            .map(|(window, mass)| {
-                let width = window[1] - window[0];
-                mass * width
-            })
-    }
-
     fn locate(&self, x: T) -> Result<ObservationLocation, PosteriorError<T>>
     where
         T: Float,
@@ -195,50 +165,6 @@ impl<T> PosteriorDistribution<T> {
             Ok(ObservationLocation::ExistingKnot(idx))
         } else {
             Ok(ObservationLocation::Interior(idx - 1))
-        }
-    }
-
-    //  Returns the index of the bin containing the largest interval mass
-    pub(crate) fn argmax_bin(&self) -> usize
-    where
-        T: Float,
-    {
-        self.log_interval_mass
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(i, _)| i)
-            .expect("posterior must contain at least one interval")
-    }
-
-    // Returns the maximum of the log_interval_mass values
-    pub(crate) fn max_log_interval_mass(&self) -> T
-    where
-        T: Float,
-    {
-        self.log_interval_mass[self.argmax_bin()]
-    }
-
-    // An iterator over the shifed log mass
-    //
-    // The log mass is shifted so the maximum value is 0
-    pub(crate) fn shifted_log_interval_mass(&self) -> impl Iterator<Item = T> + '_
-    where
-        T: Float,
-    {
-        let argmax_bin = self.argmax_bin();
-        let max_log_p = self.log_interval_mass[argmax_bin];
-
-        self.log_interval_mass.iter().map(move |p| *p - max_log_p)
-    }
-
-    pub(crate) fn support_interval(&self, i: usize) -> Interval<T>
-    where
-        T: Copy,
-    {
-        Interval {
-            lower: self.knots[i],
-            upper: self.knots[i + 1],
         }
     }
 

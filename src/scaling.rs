@@ -44,7 +44,7 @@ use num_traits::{Float, FromPrimitive};
 use std::ops::Range;
 
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum ScalerError<T> {
+pub enum ScalerError<T> {
     #[error("invalid domain used to construct scalar: {0:?}")]
     InvalidDomain(Range<T>),
     #[error("invalid value: {value:?}, not in {range:?}")]
@@ -151,7 +151,7 @@ impl<T: Float + FromPrimitive> Scaler<T> {
 
         let u = inv_lerp(&self.scaled, scaled);
 
-        let y = match self.mode {
+        let y = match self.mode() {
             ScaleMode::Log10 => {
                 let lo = self.raw.start.log10();
                 let hi = self.raw.end.log10();
@@ -165,6 +165,7 @@ impl<T: Float + FromPrimitive> Scaler<T> {
         Ok(y)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn to_scaled(&self, raw: T) -> Result<T, ScalerError<T>>
     where
         T: Float + FromPrimitive,
@@ -176,7 +177,7 @@ impl<T: Float + FromPrimitive> Scaler<T> {
             });
         }
 
-        let u = match self.mode {
+        let u = match self.mode() {
             ScaleMode::Linear => inv_lerp(&self.raw, raw),
             ScaleMode::Log10 => {
                 let lo = self.raw.start.log10();

@@ -91,7 +91,7 @@ impl ObjectiveSign {
         } else if sign == -T::one() {
             Ok(Some(ObjectiveSign::Negative))
         } else {
-            return Err(RootError::NaN);
+            Err(RootError::NaN)
         }
     }
 }

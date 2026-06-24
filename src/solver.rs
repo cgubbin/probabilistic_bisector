@@ -1,4 +1,4 @@
-use crate::{InferenceState, ObjectiveSign, PBError, RootOracle, Scaler, SequentialInterval};
+use crate::{InferenceState, PBError, RootOracle, Scaler, SequentialInterval};
 
 use confi::ConfidenceLevel;
 use num_traits::{Float, FromPrimitive};
@@ -67,23 +67,23 @@ impl<T: Float + FromPrimitive + std::fmt::Debug> RootFinder<T> {
         candidates.push(median);
 
         let confidence = state.confidence().current;
-        let width = confidence.upper - confidence.lower;
+        let width = confidence.upper() - confidence.lower();
 
         if width > T::zero() {
             let four = T::from_f64(4.0).unwrap();
 
-            candidates.push(confidence.lower + width / four);
-            candidates.push(confidence.lower + width / (T::one() + T::one()));
-            candidates.push(confidence.lower + width * T::from_f64(3.0).unwrap() / four);
+            candidates.push(confidence.lower() + width / four);
+            candidates.push(confidence.lower() + width / (T::one() + T::one()));
+            candidates.push(confidence.lower() + width * T::from_f64(3.0).unwrap() / four);
         }
 
         candidates.push(state.posterior().quantile(T::from_f64(0.25).unwrap()));
         candidates.push(state.posterior().quantile(T::from_f64(0.75).unwrap()));
 
-        if !state.support().contains(median) {
-            if let Some(x) = state.support().widest_interval_midpoint() {
-                candidates.push(x);
-            }
+        if !state.support().contains(median)
+            && let Some(x) = state.support().widest_interval_midpoint()
+        {
+            candidates.push(x);
         }
 
         self.deduplicate_query_candidates(candidates)
@@ -163,11 +163,7 @@ where
         let raw_domain = self.scaler.raw_domain();
 
         let slope = problem
-            .slope_sign(
-                &raw_domain,
-                self.confidence_level,
-                self.max_sign_evaluations,
-            )?
+            .slope_sign(raw_domain, self.confidence_level, self.max_sign_evaluations)?
             .ok_or(PBError::IndeterminateSlope {
                 x: (raw_domain.start + raw_domain.end) / (T::one() + T::one()),
             })?;
