@@ -12,13 +12,11 @@ confi = "0.2"
 num-traits = "0.2.19"
 thiserror = "2"
 tracing = "0.1.41"
-trellis-runner = "0.2.2"
+trellis-runner = "0.3.3"
 
 [dev-dependencies]
 approx = "0.5.1"
-argmin = "0.10.0"
-argmin-observer-slog = "0.1.0"
-rand = "0.8.5"
-rand_isaac = "0.3.0"
 proptest = "1.9.0"
-tracing-test = { version = "0.2.5", features = ["no-env-filter"] }
+rand = "0.10.1"
+rand_distr = "0.6.0"
+

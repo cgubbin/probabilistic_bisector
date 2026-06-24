@@ -35,6 +35,87 @@ impl<T: Float + FromPrimitive + std::fmt::Debug> RootFinder<T> {
     pub(crate) fn scaled_domain(&self) -> &Range<T> {
         self.scaler.scaled_domain()
     }
+
+    /// Builds an ordered list of candidate query points in scaled coordinates.
+    ///
+    /// The posterior median is the preferred query point because, in the usual
+    /// probabilistic bisection update, it approximately splits the current
+    /// posterior mass into two equally likely root-location events.
+    ///
+    /// However, in noisy problems the median can lie very close to the true root.
+    /// In that case the objective sign may be impossible to determine reliably
+    /// within the allowed sign-evaluation budget. This method therefore adds a
+    /// small number of fallback candidates away from the median.
+    ///
+    /// Candidate order:
+    ///
+    /// 1. posterior median
+    /// 2. interior quartile-like points of the current sequential confidence interval
+    /// 3. posterior quartiles
+    /// 4. midpoint of the widest active support interval, if the median is outside support
+    ///
+    /// Boundary points are removed because observations at domain endpoints do
+    /// not refine the posterior partition. Near-duplicate points are also
+    /// removed to avoid repeated attempts at effectively the same location.
+    ///
+    /// Returned values are in the scaler's transformed coordinate system,
+    /// usually `[0, 1]`.
+    fn query_candidates(&self, state: &InferenceState<T>) -> Vec<T> {
+        let mut candidates = Vec::new();
+
+        let median = state.posterior().median();
+        candidates.push(median);
+
+        let confidence = state.confidence().current;
+        let width = confidence.upper - confidence.lower;
+
+        if width > T::zero() {
+            let four = T::from_f64(4.0).unwrap();
+
+            candidates.push(confidence.lower + width / four);
+            candidates.push(confidence.lower + width / (T::one() + T::one()));
+            candidates.push(confidence.lower + width * T::from_f64(3.0).unwrap() / four);
+        }
+
+        candidates.push(state.posterior().quantile(T::from_f64(0.25).unwrap()));
+        candidates.push(state.posterior().quantile(T::from_f64(0.75).unwrap()));
+
+        if !state.support().contains(median) {
+            if let Some(x) = state.support().widest_interval_midpoint() {
+                candidates.push(x);
+            }
+        }
+
+        self.deduplicate_query_candidates(candidates)
+    }
+
+    /// Removes invalid, boundary, and near-duplicate query points.
+    ///
+    /// The probabilistic posterior is defined on the scaled domain, but endpoint
+    /// observations do not split an interval and therefore cannot refine the
+    /// posterior. This helper keeps only strict interior points.
+    fn deduplicate_query_candidates(&self, candidates: Vec<T>) -> Vec<T> {
+        let domain = self.scaler.scaled_domain().clone();
+        let eps = T::epsilon() * T::from_f64(128.0).unwrap();
+
+        let mut unique = Vec::new();
+
+        'candidate_loop: for x in candidates {
+            if x <= domain.start || x >= domain.end {
+                continue;
+            }
+
+            for y in &unique {
+                if (x - *y).abs() <= eps {
+                    continue 'candidate_loop;
+                }
+            }
+
+            unique.push(x);
+        }
+
+        unique
+    }
 }
 
 impl<T> UserState for InferenceState<T>
@@ -102,37 +183,45 @@ where
         state: &mut Self::State,
         _guard: CancellationGuard<'_>,
     ) -> Result<(), Self::Error> {
-        // Generate the next sample point at the median of the current posterior distribution and
-        // try to calculate the sign of the sample.
-        let median = state.posterior().median();
-
-        let scaled = if state.support().contains(median) {
-            median
-        } else {
-            state.support().widest_interval_midpoint().unwrap_or(median)
-        };
-
-        // Convert from the domain of the posterior distribution to the domain of the RootOracle
-        let raw = self.scaler.to_raw(scaled)?;
-        tracing::info!("median: {:?}, raw: {:?}", median, raw);
-
-        let objective_sign =
-            match problem.objective_sign(raw, self.confidence_level, self.max_sign_evaluations) {
-                Ok(Some(sign)) => sign,
-                Ok(None) | Err(crate::RootError::MaxIterExceeded(_)) => {
-                    state.sign_indeterminate();
-                    println!("sign indeterminate");
-                    return Ok(());
-                }
-                Err(e) => return Err(PBError::Oracle(e)),
-            };
-
         let slope_sign = state.slope_sign().unwrap();
-        let root_side = problem.root_side(objective_sign, slope_sign);
-        tracing::info!("root side {root_side:?} ({objective_sign:?} {slope_sign:?}) ({raw:?})");
 
-        state.observe(scaled, root_side, self.confidence_level)?;
+        for scaled in self.query_candidates(state) {
+            let raw = self.scaler.to_raw(scaled)?;
 
+            tracing::info!("trying query: scaled={:?}, raw={:?}", scaled, raw);
+
+            let objective_sign =
+                match problem.objective_sign(raw, self.confidence_level, self.max_sign_evaluations)
+                {
+                    Ok(Some(sign)) => sign,
+
+                    Ok(None) | Err(crate::RootError::MaxIterExceeded(_)) => {
+                        tracing::debug!(
+                            "sign indeterminate at scaled={:?}, raw={:?}; trying fallback",
+                            scaled,
+                            raw
+                        );
+                        continue;
+                    }
+
+                    Err(e) => return Err(PBError::Oracle(e)),
+                };
+
+            let root_side = problem.root_side(objective_sign, slope_sign);
+
+            tracing::info!(
+                "accepted query: root_side={:?}, objective_sign={:?}, slope_sign={:?}, raw={:?}",
+                root_side,
+                objective_sign,
+                slope_sign,
+                raw
+            );
+
+            state.observe(scaled, root_side, self.confidence_level)?;
+            return Ok(());
+        }
+
+        state.sign_is_indeterminate();
         Ok(())
     }
 
@@ -149,40 +238,3 @@ where
         Ok(SequentialInterval::instantiate(raw_lower..raw_upper))
     }
 }
-
-// impl<T, P> FallibleProcedure<P> for RootFinder<T>
-// where
-//     T: TrellisFloat,
-//     P: RootOracle<T>,
-// {
-//     type Output = SequentialInterval<T>;
-//     type State = RootFinderState<T>;
-//     type Error = PBError<T>;
-
-//     const NAME: &'static str = "Probabilistic bisection";
-
-//     fn initialise_fallible(
-//         &self,
-//         _problem: &mut P,
-//         _state: &mut Self::State,
-//     ) -> Result<(), Self::Error> {
-//         todo!()
-//     }
-
-//     fn step_fallible(
-//         &self,
-//         problem: &mut P,
-//         state: &mut Self::State,
-//         guard: CancellationGuard<'_>,
-//     ) -> Result<(), Self::Error> {
-//         todo!()
-//     }
-
-//     fn finalise_fallible(
-//         &self,
-//         problem: &mut P,
-//         state: &Self::State,
-//     ) -> Result<Self::Output, Self::Error> {
-//         todo!()
-//     }
-// }

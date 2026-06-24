@@ -96,12 +96,26 @@ pub(crate) enum SemiMeetError<T> {
 /// producing an empty set.
 #[derive(Debug, Clone, Copy)]
 pub struct Interval<T> {
-    pub lower: T,
-    pub upper: T,
+    pub(crate) lower: T,
+    pub(crate) upper: T,
 }
 
 impl<T> Interval<T> {
-    pub(crate) fn width(&self) -> T
+    pub fn lower(&self) -> T
+    where
+        T: Copy,
+    {
+        self.lower
+    }
+
+    pub fn upper(&self) -> T
+    where
+        T: Copy,
+    {
+        self.upper
+    }
+
+    pub fn width(&self) -> T
     where
         T: Float,
     {

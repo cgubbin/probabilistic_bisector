@@ -140,14 +140,6 @@ impl<T> InferenceState<T> {
         let (next_confidence, met) = self.confidence.clone().meet_or_keep(candidate);
         self.confidence = next_confidence;
 
-        dbg!(
-            &self.iter,
-            &self.confidence,
-            &candidate,
-            candidate.width(),
-            self.confidence.width(),
-        );
-
         if !met {
             self.sequential_stalled = true;
             self.empty_meet_count += 1;
@@ -200,8 +192,6 @@ where
     let g: Vec<usize> = (0..posterior.log_interval_mass.len())
         .filter(|&i| posterior.log_interval_density(i) - max_log_density > b_shifted)
         .collect();
-
-    dbg!(&g);
 
     let start = *g.first().ok_or(BisectionError::EmptyHull)?;
     let end = *g.last().ok_or(BisectionError::EmptyHull)?;
