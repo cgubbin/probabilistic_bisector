@@ -9,7 +9,7 @@ struct AlternatingNoise {
 
 impl RootOracle<f64> for AlternatingNoise {
     fn evaluate(&mut self, x: f64) -> f64 {
-        let eps = if self.i % 2 == 0 {
+        let eps = if self.i.is_multiple_of(2) {
             self.amplitude
         } else {
             -self.amplitude

@@ -458,9 +458,9 @@ dependencies = [
 
 [[package]]
 name = "trellis-runner"
-version = "0.3.3"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c29e631951bb2129b54c9928843bdc0f39f6996328c9be0c555288300742ec9"
+checksum = "d7d0d0e7ebe247fc92479a9c2c716846149db137eca60f599442f3457f89031f"
 dependencies = [
  "num-traits",
  "thiserror",

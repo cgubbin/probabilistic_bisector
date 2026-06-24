@@ -12,7 +12,7 @@ confi = "0.2"
 num-traits = "0.2.19"
 thiserror = "2"
 tracing = "0.1.41"
-trellis-runner = "0.3.3"
+trellis-runner = "0.4"
 
 [dev-dependencies]
 approx = "0.5.1"

@@ -474,7 +474,7 @@ mod tests {
 
         let m = dist.median();
 
-        assert!(m >= 0.0 && m <= 1.0);
+        assert!((0.0..=1.0).contains(&m));
     }
 
     #[test]
