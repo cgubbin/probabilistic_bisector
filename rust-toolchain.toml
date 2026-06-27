@@ -1,4 +1,4 @@
 [toolchain]
 channel = "stable"
-components = ["cargo", "clippy", "rustfmt", "rust-src", "rustc"]
+components = ["cargo", "clippy", "rustfmt", "rust-src", "rustc", "rust-llvm-cov", "rust-analyzer"]
 profile = "default"
