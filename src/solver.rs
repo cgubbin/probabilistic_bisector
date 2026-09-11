@@ -128,11 +128,11 @@ where
         self.slope_sign().is_some()
     }
 
-    fn progress(&self) -> Progress<Self::Float> {
+    fn progress(&self) -> Option<Progress<Self::Float>> {
         if self.sign_indeterminate() | self.sequential_stalled() {
-            Progress::Complete
+            Some(Progress::Complete)
         } else {
-            Progress::Measure(self.width())
+            Some(Progress::Measure(self.width()))
         }
     }
 }

@@ -47,6 +47,7 @@
         packages = with pkgs; [
           rustToolchain
 
+          cargo-llvm-cov
           cargo-nextest
           cargo-edit
           cargo-readme
